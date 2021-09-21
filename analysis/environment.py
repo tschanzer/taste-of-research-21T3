@@ -89,7 +89,7 @@ class Environment():
             self.pressure_raw.m, self.dewpoint_raw.m,
             fill_value='extrapolate')
 
-        def environment_dzdp(pressure, height):
+        def dzdp(pressure, height):
             """
             Calculates the rate of height change w.r.t. pressure, dz/dp.
 
@@ -114,17 +114,18 @@ class Environment():
 
             return dzdp
 
+        def dpdz(height, pressure):
+            return 1 / dzdp(pressure, height)
+
         # integrate the hydrostatic equation
         p_min = np.min(self.pressure_raw).m * 1e2
         p_max = np.max(self.pressure_raw).m * 1e2
-        sol = solve_ivp(
-            environment_dzdp, (p_max, p_min), [0],
-            t_eval=np.arange(p_max, p_min - 1e-3, -10e2))
-        self.pressure_interp_from_height = interp1d(
-            np.squeeze(sol.y), sol.t, fill_value='extrapolate')
-        self.height_interp_from_pressure = interp1d(
-            sol.t, np.squeeze(sol.y), fill_value='extrapolate')
+        self.dzdp_sol = solve_ivp(
+            dzdp, (p_max, p_min), [0], dense_output=True).sol
 
+        z_max = self.dzdp_sol(p_min).item()
+        self.dpdz_sol = solve_ivp(
+            dpdz, (0, z_max), [p_max], dense_output=True).sol
 
     def temperature_from_pressure(self, pressure):
         """
@@ -132,6 +133,8 @@ class Environment():
         """
 
         temperature = self.temperature_interp(pressure.to(units.mbar).m)
+        if temperature.size == 1:
+            temperature = temperature.item()
         return temperature*units.celsius
 
     def dewpoint_from_pressure(self, pressure):
@@ -140,6 +143,8 @@ class Environment():
         """
 
         dewpoint = self.dewpoint_interp(pressure.to(units.mbar).m)
+        if dewpoint.size == 1:
+            dewpoint = dewpoint.item()
         return dewpoint*units.celsius
 
     def pressure(self, height):
@@ -147,7 +152,10 @@ class Environment():
         Finds the environmental pressure at a given height.
         """
 
-        pressure = self.pressure_interp_from_height(height.to(units.meter).m)
+        height = np.atleast_1d(height).to(units.meter).m
+        pressure = self.dpdz_sol(height)[0,:]
+        if pressure.size == 1:
+            pressure = pressure.item()
         return (pressure*units.pascal).to(units.mbar)
 
     def height(self, pressure):
@@ -155,7 +163,10 @@ class Environment():
         Finds the height at a given environmental pressure.
         """
 
-        height = self.height_interp_from_pressure(pressure.to(units.pascal).m)
+        pressure = np.atleast_1d(pressure).to(units.pascal).m
+        height = self.dzdp_sol(pressure)[0,:]
+        if height.size == 1:
+            height = height.item()
         return height*units.meter
 
     def temperature(self, height):
