@@ -187,6 +187,18 @@ class Environment():
         dewpoint = self.dewpoint_from_pressure(pressure)
         return dewpoint
 
+    def wetbulb_temperature(height):
+        """
+        Finds the environmental wet-bulb temperature at a given height.
+        """
+
+        pressure = self.pressure(height)
+        temperature = self.temperature_from_pressure(pressure)
+        dewpoint = self.dewpoint_from_pressure(pressure)
+        wetbulb_temperature = mpcalc.wet_bulb_temperature(
+            pressure, temperature, dewpoint)
+        return wetbulb_temperature
+
     def specific_humidity(self, height):
         """
         Finds the environmental specific humidity at a given height.
@@ -485,3 +497,195 @@ class Environment():
             np.squeeze(min_height_height)*units.meter)
 
         return result
+
+
+# objective function for the root-finding algorithm
+def remaining_liquid_ratio(
+        pressure, initial_pressure, initial_temperature,
+        initial_liquid_ratio):
+    """
+    Calculates the amount of liquid water left in the parcel.
+
+    It is assumed that the parcel is initially saturated.
+    The arguments must be given as plain numbers, without units.
+
+    Args:
+        pressure: The pressure level of interest in millibars.
+        initial_pressure: The initial pressure of the parcel in
+            millibars.
+        initial_temperature: The initial temperature of the parcel in
+            degrees celsius.
+        initial_liquid_ratio: The ratio of the initial mass of liquid
+            water to the total mass of the parcel.
+
+    Returns:
+        The ratio of the remaining mass of liquid water to the total
+            mass of the parcel.
+    """
+
+    pressure = pressure*units.mbar
+    initial_pressure = initial_pressure*units.mbar
+    initial_temperature = initial_temperature*units.celsius
+
+    initial_specific_humidity = mpcalc.specific_humidity_from_dewpoint(
+        initial_pressure, initial_temperature)
+    final_temperature = mpcalc.moist_lapse(
+        pressure, initial_temperature, reference_pressure=initial_pressure)
+    final_specific_humidity = mpcalc.specific_humidity_from_dewpoint(
+        pressure, final_temperature)
+    remaining_ratio = (initial_specific_humidity + initial_liquid_ratio
+                       - final_specific_humidity)
+
+    return remaining_ratio
+
+
+def evaporation_level(
+        initial_pressure, initial_temperature, initial_liquid_ratio):
+    """
+    Finds the pressure at which all liquid water evaporates.
+
+    Args:
+        initial_pressure: The initial pressure of the parcel.
+        initial_temperature: The initial temperature of the parcel.
+        initial_liquid_ratio: The ratio of the initial mass of liquid
+            water to the total mass of the parcel.
+
+    Returns:
+        A tuple containing the pressure at which all liquid water
+            evaporates, and the temperature of the parcel at this point.
+    """
+
+    initial_pressure = initial_pressure.to(units.mbar).m
+    initial_temperature = initial_temperature.to(units.celsius).m
+
+    solution = root_scalar(
+        remaining_liquid_ratio,
+        args=(initial_pressure, initial_temperature, initial_liquid_ratio),
+        bracket=[initial_pressure, 1100])
+    level = solution.root*units.mbar
+
+    if initial_liquid_ratio != 0:  # EL is below initial level
+        level_temperature = mpcalc.moist_lapse(
+            level, initial_temperature*units.celsius,
+            reference_pressure=initial_pressure*units.mbar)
+    else:  # EL is at initial level
+        level_temperature = initial_temperature*units.celsius
+
+    return level, level_temperature
+
+
+def extra_liquid_descent_profile(
+        pressure, initial_temperature, evaporation_level, level_temperature,
+        reference_pressure=None):
+    """
+    Calculates the temperature of a descending air parcel.
+
+    The parcel has some initial liquid water content and is assumed
+    to be initially saturated.
+
+    Args:
+        pressure: Pressure levels of interest (must be monotonically
+            increasing).
+        initial_temperature: Initial temperature of the parcel,
+            corresponding to pressure[0].
+        evaporation_level: The pressure at which all liquid water in
+            the parcel will evaporate.
+        level_temperature: Parcel temperature at the evaporation level.
+        reference_pressure: (optional) The pressure corresponding to
+            initial_temperature. Defaults to pressure[0].
+
+    Returns:
+        The temperature of the parcel at the given pressure levels
+            as an array.
+    """
+
+    pressure = np.atleast_1d(pressure)
+    reference_inserted = False
+    if reference_pressure is None:
+        reference_pressure = pressure[0]
+    elif reference_pressure != pressure[0]:
+        reference_inserted = True
+        pressure = np.insert(pressure, 0, reference_pressure)
+
+    # find the position of the evaporation level in the pressure array
+    level_index = np.searchsorted(pressure.m, evaporation_level.m, side='left')
+
+    # moist descent to the evaporation level
+    if evaporation_level > reference_pressure:
+        # moist_lapse has a bug: it cannot handle downward motion
+        # where the first element of the pressure array is the
+        # reference pressure.
+        # if level_index == 1, pressure[1:level_index] will be empty
+        # and moist_lapse cannot handle empty pressure arrays
+        if level_index > 1:
+            moist_temperature = mpcalc.moist_lapse(
+                pressure[1:level_index], initial_temperature,
+                reference_pressure=reference_pressure)
+        else:
+            moist_temperature = np.array([])*initial_temperature.units
+
+        moist_temperature = concatenate(
+            [initial_temperature, moist_temperature])
+    else:
+        # if there is no liquid water, there is no moist descent
+        # and the temperature at the evaporation level is the initial
+        # temperature
+        moist_temperature = np.array([])*initial_temperature.units
+
+    # dry descent from the evaporation level
+    if level_index != len(pressure):  # some pressures are below EL
+        dry_temperature = mpcalc.dry_lapse(
+            pressure[level_index:], level_temperature,
+            reference_pressure=evaporation_level)
+    else:  # no pressures are below EL
+        dry_temperature = np.array([])*initial_temperature.units
+
+    temperature = concatenate([moist_temperature, dry_temperature])
+    if reference_inserted:
+        temperature = temperature[1:]
+    if temperature.size == 1:
+        temperature = temperature.item()
+
+    return temperature
+
+
+def specific_humidity_from_descent_profile(
+        pressure, temperature, evaporation_level, level_temperature):
+    """
+    Calculates the specific humidity of a descending parcel.
+
+    Args:
+        pressure: Pressure levels of interest.
+        temperature: Temperature array corresponding to given pressure
+            levels.
+        evaporation_level: Evaporation level of the parcel.
+        level_temperature: Parcel temperature at the evaporation level.
+
+    Returns:
+        The specific humidity array corresponding to the specified
+        pressure levels.
+    """
+
+    pressure = np.atleast_1d(pressure)
+    temperature = np.atleast_1d(temperature)
+    above_level_mask = pressure <= evaporation_level
+    if np.sum(above_level_mask) > 0:
+        # dew point above the evaporation level is the temperature
+        q_above_level = mpcalc.specific_humidity_from_dewpoint(
+                pressure[above_level_mask], temperature[above_level_mask])
+    else:
+        q_above_level = np.array([])
+
+    # specific humidity below the evaporation level is the specific
+    # humidity at the evaporation level
+    q_below_level = (
+        np.ones(np.sum(~above_level_mask))
+        * mpcalc.specific_humidity_from_dewpoint(
+             evaporation_level, level_temperature)
+    )
+
+    specific_humidity = concatenate([q_above_level, q_below_level])
+    if specific_humidity.size == 1:
+        specific_humidity = specific_humidity.item()
+
+    return specific_humidity
