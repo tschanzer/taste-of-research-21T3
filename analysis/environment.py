@@ -65,7 +65,7 @@ class Environment():
     Class for parcel calculations on a real atmospheric sounding.
     """
 
-    def __init__(self, pressure, temperature, dewpoint):
+    def __init__(self, pressure, temperature, dewpoint, info='', name=''):
         """
         Instantiates an Environment.
 
@@ -81,6 +81,8 @@ class Environment():
         self.pressure_raw = pressure.to(units.mbar)
         self.temperature_raw = temperature.to(units.celsius)
         self.dewpoint_raw = dewpoint.to(units.celsius)
+        self.info = info
+        self.name = name
 
         self.temperature_interp = interp1d(
             self.pressure_raw.m, self.temperature_raw.m,
@@ -187,7 +189,7 @@ class Environment():
         dewpoint = self.dewpoint_from_pressure(pressure)
         return dewpoint
 
-    def wetbulb_temperature(height):
+    def wetbulb_temperature(self, height):
         """
         Finds the environmental wet-bulb temperature at a given height.
         """
@@ -436,7 +438,7 @@ class Environment():
             for ii, dq in enumerate(specific_humidity_change):
                 sys.stdout.write(
                         '\rCalculating buoyancy level '
-                        '{} of {}.'.format(
+                        '{} of {}.       '.format(
                             i*len(specific_humidity_change) + ii + 1,
                             len(specific_humidity_change)*len(initial_height)))
                 if dq <= self.maximum_specific_humidity_change(z0):
@@ -481,7 +483,7 @@ class Environment():
         for i, z0 in enumerate(initial_height):
             sys.stdout.write(
                 '\rCalculating buoyancy level '
-                '{} of {}.'.format(i+1, len(initial_height)))
+                '{} of {}.       '.format(i+1, len(initial_height)))
             try:
                 sol[i] = root_scalar(
                     root_function,
@@ -527,7 +529,7 @@ class Environment():
             for ii, lr in enumerate(liquid_ratio):
                 sys.stdout.write(
                         '\rCalculating buoyancy level '
-                        '{} of {}.'.format(
+                        '{} of {}.       '.format(
                             i*len(liquid_ratio) + ii + 1,
                             len(liquid_ratio)*len(initial_height)))
                 level, level_temperature = evaporation_level(
@@ -756,7 +758,7 @@ def evaporation_level(
     solution = root_scalar(
         remaining_liquid_ratio,
         args=(initial_pressure, initial_temperature, initial_liquid_ratio),
-        bracket=[initial_pressure, 1100])
+        bracket=[initial_pressure, 2000])
     level = solution.root*units.mbar
 
     if initial_liquid_ratio != 0:  # EL is below initial level
