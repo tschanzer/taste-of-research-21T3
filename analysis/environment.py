@@ -274,9 +274,14 @@ class Environment():
 
         return density
 
-    def parcel_density(self, height, initial_height, specific_humidity_change):
+    def dry_parcel_density(
+            self, height, initial_height, specific_humidity_change):
         """
         Calculates the density of a parcel after precipitation.
+
+        Assumes that the specific humidity is initially increased
+        by a known amount via evaporation, with the parcel remaining
+        subsaturated at all times.
 
         Args:
             height: The height of the parcel.
@@ -304,98 +309,260 @@ class Environment():
 
         return density
 
-    def parcel_buoyancy(
-            self, height, initial_height, specific_humidity_change):
+    def saturated_parcel_density(
+            self, height, initial_height, initial_temperature):
         """
-        Calculates the buoyancy of a parcel after precipitation.
+        Calculates the density of a parcel after precipitation.
+
+        Assumes that the parcel is initially saturated via evaporation
+        and remains saturated at all times.
 
         Args:
             height: The height of the parcel.
             initial_height: The initial height of the parcel (i.e., its
                 height when the precipitation occurred).
-            specific_humidity_change: The change in specific humidity
-                that resulted from the precipitation.
+            initial_temperature: The initial temperature of the parcel.
 
         Returns:
-            The buoyant force per unit mass on the parcel.
+            The density of the parcel.
         """
 
-        environment_density = self.density(height)
-        density = self.parcel_density(
-            height, initial_height, specific_humidity_change)
-        buoyancy = (environment_density - density) / density * const.g
-        return buoyancy
+        initial_pressure = self.pressure(initial_height)
+        pressure = self.pressure(height)
 
-    def parcel_buoyancy_root_function(
-            self, height, initial_height, specific_humidity_change):
+        temperature = mpcalc.moist_lapse(
+            pressure, initial_temperature, reference_pressure=initial_pressure)
+
+        mixing_ratio = mpcalc.saturation_mixing_ratio(pressure, temperature)
+        density = mpcalc.density(pressure, temperature, mixing_ratio)
+
+        return density
+
+    def limited_water_parcel_density(
+            self, height, initial_height, initial_temperature,
+            evaporation_level, level_temperature):
+        """
+        Calculates the density of a parcel after precipitation.
+
+        Assumes that the parcel is initially saturated via evaporation,
+        but retains only a limited amount of liquid water so that it
+        may not remain saturated during descent.
+
+        Args:
+            height: The height of the parcel.
+            initial_height: The initial height of the parcel (i.e., its
+                height when the precipitation occurred).
+            initial_temperature: The initial temperature of the parcel.
+            evaporation_level: The pressure at which the remaining
+                liquid water will completely evaporate.
+            level_temperature: The parcel's temperature at the
+                evaporation level.
+
+        Returns:
+            The density of the parcel.
+        """
+
+        initial_pressure = self.pressure(initial_height)
+        pressure = self.pressure(height)
+
+        temperature = extra_liquid_descent_profile(
+            pressure, initial_temperature, evaporation_level,
+            level_temperature, reference_pressure=initial_pressure)
+
+        specific_humidity = specific_humidity_from_descent_profile(
+            pressure, temperature, evaporation_level, level_temperature)
+        mixing_ratio = mpcalc.mixing_ratio_from_specific_humidity(
+            specific_humidity)
+
+        density = mpcalc.density(pressure, temperature, mixing_ratio)
+        return density
+
+    def parcel_buoyancy(self, height, *args, regime='dry'):
         """
         Calculates the buoyancy of a parcel after precipitation.
 
         Args:
-            height: The height of the parcel in metres, as a dimensionless
-                number.
-            initial_height: The initial height of the parcel (i.e., its
-                height when the precipitation occurred).
-            specific_humidity_change: The change in specific humidity
-                that resulted from the precipitation.
+            height: The height of the parcel.
+            regime: The buoyancy regime for the calculation: 'dry',
+                'saturated' or 'limited'. Default is 'dry'.
+            The remaining positional arguments are the same as those for
+                the density function corresponding to the regime.
 
         Returns:
             The buoyant force per unit mass on the parcel.
         """
 
-        buoyancy = self.parcel_buoyancy(
-            height*units.meter, initial_height, specific_humidity_change).m
+        if regime not in ['dry', 'saturated', 'limited']:
+            raise ValueError(
+                "regime must be 'dry', 'saturated' or 'limited'.")
+
+        environment_density = self.density(height)
+
+        density_function = {
+            'dry': self.dry_parcel_density,
+            'saturated': self.saturated_parcel_density,
+            'limited': self.limited_water_parcel_density}[regime]
+        density = density_function(height, *args)
+
+        buoyancy = (environment_density - density) / density * const.g
         return buoyancy
 
-    def neutral_buoyancy_level(self, initial_height, specific_humidity_change):
+    def dry_neutral_buoyancy_level(
+            self, initial_height, specific_humidity_change):
         """
-        Calculates the neutral buoyancy height of a parcel.
+        Calculates the neutral buoyancy heights of parcels.
+
+        Assumes the dry buoyancy regime.
 
         Args:
-            initial_height: The initial height of the parcel.
-            specific_humidity_change: The change in specific humidity due to
-                evaporation.
+            initial_height: An array of initial heights.
+            specific_humidity_change: An array of initial specific
+                humidity changes due to evaporation.
 
         Returns:
-            The height at which the buoyancy of the parcel is zero.
+            An array of neutral buoyancy heights, with each row
+                corresponding to one initial height and each column
+                corresponding to one initial specific humidity change.
         """
 
         initial_height = np.atleast_1d(initial_height)
         specific_humidity_change = np.atleast_1d(specific_humidity_change)
         sol = np.zeros((len(initial_height), len(specific_humidity_change)))
-        max_height = self.height(np.min(self.pressure_raw) + 10*units.mbar).m
+
+        root_function = lambda height, *args: self.parcel_buoyancy(
+            height*units.meter, *args, regime='dry').m
 
         for i, z0 in enumerate(initial_height):
             for ii, dq in enumerate(specific_humidity_change):
+                sys.stdout.write(
+                        '\rCalculating buoyancy level '
+                        '{} of {}.'.format(
+                            i*len(specific_humidity_change) + ii + 1,
+                            len(specific_humidity_change)*len(initial_height)))
                 if dq <= self.maximum_specific_humidity_change(z0):
                     try:
                         sol[i,ii] = root_scalar(
-                            self.parcel_buoyancy_root_function,
+                            root_function,
                             args=(z0, dq),
                             x0=z0.to(units.meter).m, x1=0,
                             bracket=[0, z0.to(units.meter).m]
                         ).root
                     except ValueError:
                         sol[i,ii] = 0
-                    sys.stdout.write(
-                        '\rCalculating buoyancy level '
-                        '{} of {}.'.format(
-                            i*len(specific_humidity_change) + ii + 1,
-                            len(specific_humidity_change)*len(initial_height)))
                 else:
                     sol[i,ii] = np.nan
 
-        return np.squeeze(sol)/1e3*units.km
+        sol = np.squeeze(sol)
+        if sol.size == 1:
+            sol = sol.item()
 
-    def modified_motion(self, time, initial_height, dq):
+        return sol/1e3*units.km
+
+    def saturated_neutral_buoyancy_level(self, initial_height):
         """
-        Calculates parcel motion for different specific humidity changes.
+        Calculates the neutral buoyancy height of a parcel.
+
+        Assumes the saturated buoyancy regime.
 
         Args:
-            time: Array of time points.
+            initial_height: The initial height of the parcel.
+
+        Returns:
+            The height at which the buoyancy of the parcel is zero.
+        """
+
+        initial_height = np.atleast_1d(initial_height)
+        initial_temperature = self.wetbulb_temperature(initial_height)
+        sol = np.zeros(len(initial_height))
+
+        root_function = lambda height, *args: self.parcel_buoyancy(
+            height*units.meter, *args, regime='saturated').m
+
+        for i, z0 in enumerate(initial_height):
+            sys.stdout.write(
+                '\rCalculating buoyancy level '
+                '{} of {}.'.format(i+1, len(initial_height)))
+            try:
+                sol[i] = root_scalar(
+                    root_function,
+                    args=(z0, initial_temperature[i]),
+                    x0=z0.to(units.meter).m, x1=0,
+                    bracket=[0, z0.to(units.meter).m]
+                ).root
+            except ValueError:
+                sol[i] = 0
+
+        if sol.size == 1:
+            sol = sol.item()
+
+        return sol/1e3*units.km
+
+    def limited_neutral_buoyancy_level(self, initial_height, liquid_ratio):
+        """
+        Calculates the neutral buoyancy height of a parcel.
+
+        Assumes the limited buoyancy regime.
+
+        Args:
+            initial_height: An array of initial heights.
+            liquid_ratio: An array of initial liquid water amounts,
+                as fractions of total parcel mass.
+
+        Returns:
+            An array of neutral buoyancy heights, with each row
+                corresponding to one initial height and each column
+                corresponding to one initial liquid water ratio.
+        """
+
+        initial_height = np.atleast_1d(initial_height)
+        initial_pressure = self.pressure(initial_height)
+        initial_temperature = self.wetbulb_temperature(initial_height)
+        liquid_ratio = np.atleast_1d(liquid_ratio)
+        sol = np.zeros((len(initial_height), len(liquid_ratio)))
+
+        root_function = lambda height, *args: self.parcel_buoyancy(
+            height*units.meter, *args, regime='limited').m
+
+        for i, z0 in enumerate(initial_height):
+            for ii, lr in enumerate(liquid_ratio):
+                sys.stdout.write(
+                        '\rCalculating buoyancy level '
+                        '{} of {}.'.format(
+                            i*len(liquid_ratio) + ii + 1,
+                            len(liquid_ratio)*len(initial_height)))
+                level, level_temperature = evaporation_level(
+                    initial_pressure[i], initial_temperature[i], lr)
+                try:
+                    sol[i,ii] = root_scalar(
+                        root_function,
+                        args=(z0, initial_temperature[i], level,
+                              level_temperature),
+                        x0=z0.to(units.meter).m, x1=0,
+                        bracket=[0, z0.to(units.meter).m]
+                    ).root
+                except ValueError:
+                    sol[i,ii] = 0
+
+        sol = np.squeeze(sol)
+        if sol.size == 1:
+            sol = sol.item()
+
+        return sol/1e3*units.km
+
+    def modified_motion(self, time, initial_height, *args, regime='dry'):
+        """
+        Calculates parcel motion.
+
+        Args:
+            time: Array of time points for the solution.
             initial_height: Array of initial heights.
-            dq_range: Array of initial changes in specific humidity due
-                to evaporation.
+            *args:
+                Initial specific humidity change array if regime is
+                    'dry',
+                Nothing if regime is 'saturated',
+                Initial liquid water ratio if regime is 'limited'.
+            regime: The buoyancy regime to use: 'dry', 'saturated' or
+                'limited'.
 
         Returns:
             A MotionResult object.
@@ -403,27 +570,55 @@ class Environment():
 
         # independent variables
         initial_height = np.atleast_1d(initial_height).to(units.meter).m
-        dq = np.atleast_1d(dq)
-        if len(initial_height) != len(dq):
-            raise ValueError(
-                'Initial height and specific humidity change arrays must '
-                'have the same length.')
+        length = len(initial_height)
         initial_state = [[z0, 0] for z0 in initial_height]
         time = time.to(units.second).m
 
-        def motion_ode(
-                time, state, initial_height, dq):
+        # functions to calculate the extra arguments to pass to motion_ode
+        if regime == 'dry':
+            dq = np.atleast_1d(args[0])
+            if len(dq) != length:
+                raise ValueError(
+                    'Initial height and specific humidity change arrays must '
+                    'have the same length.')
+            ode_args = lambda i: (initial_height[i]*units.meter, dq[i])
+        elif regime == 'saturated':
+            ode_args = lambda i: (
+                initial_height[i]*units.meter,
+                self.wetbulb_temperature(initial_height[i]*units.meter),
+            )
+        elif regime == 'limited':
+            liquid_ratio = np.atleast_1d(args[0])
+            if len(liquid_ratio) != length:
+                raise ValueError(
+                    'Initial height and liquid ratio arrays must '
+                    'have the same length.')
+            def ode_args(i):
+                height = initial_height[i]*units.meter
+                initial_pressure = self.pressure(height)
+                initial_temperature = self.wetbulb_temperature(height)
+                level, level_temperature = evaporation_level(
+                    initial_pressure, initial_temperature, liquid_ratio[i])
+                return (
+                    height, initial_temperature,
+                    level, level_temperature,
+                )
+        else:
+            raise ValueError(
+                "regime must be 'dry', 'saturated' or 'limited'.")
+
+        def motion_ode(time, state, *args):
             """
             Defines the equation of motion for a parcel.
             """
 
             buoyancy = self.parcel_buoyancy(
-                state[0]*units.meter, initial_height*units.meter, dq)
+                state[0]*units.meter, *args, regime=regime)
             return [state[1], buoyancy.magnitude]
 
         # event function for solve_ivp, zero when parcel reaches min height
         min_height = lambda time, state, *args: state[1]
-        min_height.direction = 1  # find zero that goes from negative to positive
+        min_height.direction = 1  # find zero that goes from - to +
         min_height.terminal = True  # stop integration at minimum height
 
         # event function for solve_ivp, zero when parcel hits ground
@@ -431,36 +626,36 @@ class Environment():
         hit_ground.terminal = True  # stop integration at ground
 
         # prepare empty arrays for data
-        height = np.zeros((len(dq), len(time)))
+        height = np.zeros((length, len(time)))
         height[:] = np.nan
-        velocity = np.zeros((len(dq), len(time)))
+        velocity = np.zeros((length, len(time)))
         velocity[:] = np.nan
 
-        neutral_buoyancy_time = np.zeros(len(dq))
-        hit_ground_time = np.zeros(len(dq))
-        min_height_time = np.zeros(len(dq))
+        neutral_buoyancy_time = np.zeros(length)
+        hit_ground_time = np.zeros(length)
+        min_height_time = np.zeros(length)
 
-        neutral_buoyancy_height = np.zeros(len(dq))
-        neutral_buoyancy_velocity = np.zeros(len(dq))
-        hit_ground_velocity = np.zeros(len(dq))
-        min_height_height = np.zeros(len(dq))
+        neutral_buoyancy_height = np.zeros(length)
+        neutral_buoyancy_velocity = np.zeros(length)
+        hit_ground_velocity = np.zeros(length)
+        min_height_height = np.zeros(length)
 
-        for i in range(len(dq)):
+        for i in range(length):
             sys.stdout.write(
                 '\rCalculating profile {0} of {1}.'
-                '   '.format(i+1, len(dq)))
+                '   '.format(i+1, length))
 
             # event function for solve_ivp, zero when parcel is neutrally
             # buoyant
             neutral_buoyancy = lambda time, state, *args: motion_ode(
-                time, state, initial_height[i], dq[i])[1]
+                time, state, *args)[1]
 
             sol = solve_ivp(
                 motion_ode,
                 [np.min(time), np.max(time)],
                 initial_state[i],
                 t_eval=time,
-                args=(initial_height[i], dq[i]),
+                args=ode_args(i),
                 events=[neutral_buoyancy, hit_ground, min_height])
 
             height[i,:len(sol.y[0,:])] = sol.y[0,:]
