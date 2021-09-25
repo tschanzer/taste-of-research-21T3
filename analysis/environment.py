@@ -614,8 +614,13 @@ class Environment():
             Defines the equation of motion for a parcel.
             """
 
+            # for some reason solve_ivp likes to test large negative
+            # heights which can cause overflows
+            height = np.max([state[0], -1000])*units.meter
             buoyancy = self.parcel_buoyancy(
-                state[0]*units.meter, *args, regime=regime)
+                height, *args, regime=regime)
+            if buoyancy.size > 1:  # workaround for bug in moist_lapse
+                buoyancy = buoyancy[0]
             return [state[1], buoyancy.magnitude]
 
         # event function for solve_ivp, zero when parcel reaches min height
