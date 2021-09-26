@@ -616,7 +616,7 @@ class Environment():
 
             # for some reason solve_ivp likes to test large negative
             # heights which can cause overflows
-            height = np.max([state[0], -1000])*units.meter
+            height = np.max([state[0], 0])*units.meter
             buoyancy = self.parcel_buoyancy(
                 height, *args, regime=regime)
             if buoyancy.size > 1:  # workaround for bug in moist_lapse
@@ -823,6 +823,10 @@ def extra_liquid_descent_profile(
             moist_temperature = mpcalc.moist_lapse(
                 pressure[1:level_index], initial_temperature,
                 reference_pressure=reference_pressure)
+            if (
+                    np.atleast_1d(pressure[1:level_index]).size == 1
+                    and np.atleast_1d(moist_temperature).size > 1):
+                moist_temperature = moist_temperature[0]
         else:
             moist_temperature = np.array([])*initial_temperature.units
 
