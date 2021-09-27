@@ -60,6 +60,29 @@ class MotionResult():
         self.min_height = min_height
 
 
+def moist_lapse(pressure, initial_temperature, reference_pressure=None):
+    """
+    Equivalent to metpy.calc.moist_lapse, circumventing bugs
+    """
+
+    pressure = np.atleast_1d(pressure)
+    if reference_pressure is None:
+        reference_pressure = pressure[0]
+    if pressure.size == 1:
+        if np.abs(pressure - reference_pressure).to(units.mbar).m >= 0.01:
+            return mpcalc.moist_lapse(
+                pressure, initial_temperature,
+                reference_pressure=reference_pressure)
+        else:
+            return initial_temperature
+    else:
+        pressure = pressure[1:]
+        temperature = mpcalc.moist_lapse(
+            pressure, initial_temperature,
+            reference_pressure=reference_pressure)
+        return concatenate([initial_temperature, temperature])
+
+
 class Environment():
     """
     Class for parcel calculations on a real atmospheric sounding.
@@ -332,7 +355,7 @@ class Environment():
         initial_pressure = self.pressure(initial_height)
         pressure = self.pressure(height)
 
-        temperature = mpcalc.moist_lapse(
+        temperature = moist_lapse(
             pressure, initial_temperature, reference_pressure=initial_pressure)
 
         mixing_ratio = mpcalc.saturation_mixing_ratio(pressure, temperature)
@@ -632,8 +655,6 @@ class Environment():
             height = np.max([state[0], 0])*units.meter
             buoyancy = self.parcel_buoyancy(
                 height, *args, regime=regime)
-            if buoyancy.size > 1:  # workaround for bug in moist_lapse
-                buoyancy = buoyancy[0]
             return [state[1], buoyancy.magnitude]
 
         # event function for solve_ivp, zero when parcel reaches min height
@@ -749,7 +770,7 @@ def remaining_liquid_ratio(
 
     initial_specific_humidity = mpcalc.specific_humidity_from_dewpoint(
         initial_pressure, initial_temperature)
-    final_temperature = mpcalc.moist_lapse(
+    final_temperature = moist_lapse(
         pressure, initial_temperature, reference_pressure=initial_pressure)
     final_specific_humidity = mpcalc.specific_humidity_from_dewpoint(
         pressure, final_temperature)
@@ -783,11 +804,8 @@ def evaporation_level(
         bracket=[initial_pressure.to(units.mbar).m, 2000])
     level = solution.root*units.mbar
 
-    if initial_liquid_ratio != 0:  # EL is below initial level
-        level_temperature = mpcalc.moist_lapse(
+    level_temperature = moist_lapse(
             level, initial_temperature, reference_pressure=initial_pressure)
-    else:  # EL is at initial level
-        level_temperature = initial_temperature
 
     return level, level_temperature
 
@@ -818,53 +836,30 @@ def extra_liquid_descent_profile(
     """
 
     pressure = np.atleast_1d(pressure)
-    reference_inserted = False
     if reference_pressure is None:
         reference_pressure = pressure[0]
-    elif reference_pressure != pressure[0]:
-        reference_inserted = True
-        pressure = np.insert(pressure, 0, reference_pressure)
 
     # find the position of the evaporation level in the pressure array
     level_index = np.searchsorted(pressure.m, evaporation_level.m, side='left')
 
     # moist descent to the evaporation level
-    if evaporation_level > reference_pressure:
-        # moist_lapse has a bug: it cannot handle downward motion
-        # where the first element of the pressure array is the
-        # reference pressure.
-        # if level_index == 1, pressure[1:level_index] will be empty
-        # and moist_lapse cannot handle empty pressure arrays
-        if level_index > 1:
-            moist_temperature = mpcalc.moist_lapse(
-                pressure[1:level_index], initial_temperature,
-                reference_pressure=reference_pressure)
-            if (
-                    np.atleast_1d(pressure[1:level_index]).size == 1
-                    and np.atleast_1d(moist_temperature).size > 1):
-                moist_temperature = moist_temperature[0]
-        else:
-            moist_temperature = np.array([])*initial_temperature.units
-
-        moist_temperature = concatenate(
-            [initial_temperature, moist_temperature])
-    else:
-        # if there is no liquid water, there is no moist descent
-        # and the temperature at the evaporation level is the initial
-        # temperature
+    if level_index > 0:  # some levels are above EL
+        moist_temperature = moist_lapse(
+            pressure[:level_index], initial_temperature,
+            reference_pressure=reference_pressure)
+    else:  # no levels are above EL
         moist_temperature = np.array([])*initial_temperature.units
 
     # dry descent from the evaporation level
-    if level_index != len(pressure):  # some pressures are below EL
+    if level_index != len(pressure):  # some levels are at or below EL
         dry_temperature = mpcalc.dry_lapse(
             pressure[level_index:], level_temperature,
             reference_pressure=evaporation_level)
-    else:  # no pressures are below EL
+    else:  # no levels are at or below EL
         dry_temperature = np.array([])*initial_temperature.units
 
+    # join moist and dry descent
     temperature = concatenate([moist_temperature, dry_temperature])
-    if reference_inserted:
-        temperature = temperature[1:]
     if temperature.size == 1:
         temperature = temperature.item()
 
