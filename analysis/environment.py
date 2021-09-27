@@ -551,7 +551,8 @@ class Environment():
 
         return sol/1e3*units.km
 
-    def modified_motion(self, time, initial_height, *args, regime='dry'):
+    def modified_motion(
+        self, time, initial_height, initial_velocity, *args, regime='dry'):
         """
         Calculates parcel motion.
 
@@ -573,7 +574,14 @@ class Environment():
         # independent variables
         initial_height = np.atleast_1d(initial_height).to(units.meter).m
         length = len(initial_height)
-        initial_state = [[z0, 0] for z0 in initial_height]
+        initial_velocity = np.atleast_1d(
+            initial_velocity).to(units.meter/units.second).m
+        if length != len(initial_velocity):
+            raise ValueError(
+                    'Initial height and velocity arrays must have the same '
+                    'length.')
+        initial_state = [
+            list(x) for x in zip(initial_height, initial_velocity)]
         time = time.to(units.second).m
 
         # functions to calculate the extra arguments to pass to motion_ode
