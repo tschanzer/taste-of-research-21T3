@@ -342,7 +342,7 @@ class Environment():
 
     def limited_water_parcel_density(
             self, height, initial_height, initial_temperature,
-            evaporation_level, level_temperature):
+            evaporation_level, level_temperature, initial_liquid_ratio):
         """
         Calculates the density of a parcel after precipitation.
 
@@ -376,7 +376,12 @@ class Environment():
         mixing_ratio = mpcalc.mixing_ratio_from_specific_humidity(
             specific_humidity)
 
-        density = mpcalc.density(pressure, temperature, mixing_ratio)
+        gas_density = mpcalc.density(pressure, temperature, mixing_ratio)
+        liquid_ratio = remaining_liquid_ratio(
+                pressure, initial_pressure, initial_temperature,
+                initial_liquid_ratio, min_zero=True)
+
+        density = gas_density / (1 - liquid_ratio)  # liquid correction
         return density
 
     def parcel_buoyancy(self, height, *args, regime='dry'):
@@ -712,7 +717,7 @@ class Environment():
 # objective function for the root-finding algorithm
 def remaining_liquid_ratio(
         pressure, initial_pressure, initial_temperature,
-        initial_liquid_ratio):
+        initial_liquid_ratio, min_zero=False):
     """
     Calculates the amount of liquid water left in the parcel.
 
@@ -727,15 +732,20 @@ def remaining_liquid_ratio(
             degrees celsius.
         initial_liquid_ratio: The ratio of the initial mass of liquid
             water to the total mass of the parcel.
+        min_zero: Whether or not to return a non-negative result
+            (defaults to False).
 
     Returns:
         The ratio of the remaining mass of liquid water to the total
             mass of the parcel.
     """
 
-    pressure = pressure*units.mbar
-    initial_pressure = initial_pressure*units.mbar
-    initial_temperature = initial_temperature*units.celsius
+    if not hasattr(pressure, 'units'):
+        pressure = pressure*units.mbar
+    if not hasattr(initial_pressure, 'units'):
+        initial_pressure = initial_pressure*units.mbar
+    if not hasattr(initial_temperature, 'units'):
+        initial_temperature = initial_temperature*units.celsius
 
     initial_specific_humidity = mpcalc.specific_humidity_from_dewpoint(
         initial_pressure, initial_temperature)
@@ -745,6 +755,8 @@ def remaining_liquid_ratio(
         pressure, final_temperature)
     remaining_ratio = (initial_specific_humidity + initial_liquid_ratio
                        - final_specific_humidity)
+    if min_zero:
+        remaining_ratio = np.max([remaining_ratio, 0])
 
     return remaining_ratio
 
@@ -765,21 +777,17 @@ def evaporation_level(
             evaporates, and the temperature of the parcel at this point.
     """
 
-    initial_pressure = initial_pressure.to(units.mbar).m
-    initial_temperature = initial_temperature.to(units.celsius).m
-
     solution = root_scalar(
         remaining_liquid_ratio,
         args=(initial_pressure, initial_temperature, initial_liquid_ratio),
-        bracket=[initial_pressure, 2000])
+        bracket=[initial_pressure.to(units.mbar).m, 2000])
     level = solution.root*units.mbar
 
     if initial_liquid_ratio != 0:  # EL is below initial level
         level_temperature = mpcalc.moist_lapse(
-            level, initial_temperature*units.celsius,
-            reference_pressure=initial_pressure*units.mbar)
+            level, initial_temperature, reference_pressure=initial_pressure)
     else:  # EL is at initial level
-        level_temperature = initial_temperature*units.celsius
+        level_temperature = initial_temperature
 
     return level, level_temperature
 
