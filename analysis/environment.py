@@ -566,7 +566,7 @@ class Environment():
                     sol[i,ii] = root_scalar(
                         root_function,
                         args=(z0, initial_temperature[i], level,
-                              level_temperature),
+                              level_temperature, lr),
                         x0=z0.to(units.meter).m, x1=0,
                         bracket=[0, z0.to(units.meter).m]
                     ).root
@@ -639,7 +639,7 @@ class Environment():
                     initial_pressure, initial_temperature, liquid_ratio[i])
                 return (
                     height, initial_temperature,
-                    level, level_temperature,
+                    level, level_temperature, liquid_ratio[i],
                 )
         else:
             raise ValueError(
