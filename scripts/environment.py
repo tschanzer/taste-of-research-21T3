@@ -18,46 +18,10 @@ import sys
 
 
 class MotionResult():
-    """
-    Class for results of parcel motion calculations.
+    """Class for results of parcel motion calculations."""
 
-    Attributes:
-        height: An array of heights, with each row corresponding to a
-            different initial condition.
-        velocity: An array of velocitites, with each row corresponding
-            to a different initial condition.
-        neutral_buoyancy_time: Times at which parcels reached their
-            neutral buoyancy levels.
-        hit_ground_time: Times at which parcels hit the ground.
-        min_height_time: Times at which parcels reached their minimum
-            heights (without hitting the ground)
-        neutral_buoyancy_height: The heights of the neutral buoyancy
-            levels.
-        neutral_buoyancy_velocity: The velocities at the neutral
-            buoyancy levels.
-        hit_ground_velocity: The velocities with which the parcels hit
-            the ground.
-        min_height: The minimum heights of the parcels (that did not hit
-            the ground).
-    """
+    pass
 
-    def __init__(
-            self, height, velocity, neutral_buoyancy_time, hit_ground_time,
-            min_height_time, neutral_buoyancy_height,
-            neutral_buoyancy_velocity, hit_ground_velocity, min_height):
-        """
-        Instantiates a MotionResult.
-        """
-
-        self.height = height
-        self.velocity = velocity
-        self.neutral_buoyancy_time = neutral_buoyancy_time
-        self.hit_ground_time = hit_ground_time
-        self.min_height_time = min_height_time
-        self.neutral_buoyancy_height = neutral_buoyancy_height
-        self.neutral_buoyancy_velocity = neutral_buoyancy_velocity
-        self.hit_ground_velocity = hit_ground_velocity
-        self.min_height = min_height
 
 
 def moist_lapse(pressure, initial_temperature, reference_pressure=None):
@@ -721,16 +685,20 @@ class Environment():
             min_height_height[i] = (
                 sol.y_events[2][0,0] if sol.y_events[2].size > 0 else np.nan)
 
-        result = MotionResult(
-            np.squeeze(height)*units.meter,
-            np.squeeze(velocity)*units.meter/units.second,
-            np.squeeze(neutral_buoyancy_time)*units.second,
-            np.squeeze(hit_ground_time)*units.second,
-            np.squeeze(min_height_time)*units.second,
-            np.squeeze(neutral_buoyancy_height)*units.meter,
-            np.squeeze(neutral_buoyancy_velocity)*units.meter/units.second,
-            np.squeeze(hit_ground_velocity)*units.meter/units.second,
-            np.squeeze(min_height_height)*units.meter)
+        result = MotionResult()
+        result.height = np.squeeze(height)*units.meter
+        result.velocity = np.squeeze(velocity)*units.meter/units.second
+        result.neutral_buoyancy_time = (
+            np.squeeze(neutral_buoyancy_time)*units.second)
+        result.hit_ground_time = np.squeeze(hit_ground_time)*units.second
+        result.min_height_time = np.squeeze(min_height_time)*units.second
+        result.neutral_buoyancy_height = (
+            np.squeeze(neutral_buoyancy_height)*units.meter)
+        result.neutral_buoyancy_velocity = (
+            np.squeeze(neutral_buoyancy_velocity)*units.meter/units.second)
+        result.hit_ground_velocity = (
+            np.squeeze(hit_ground_velocity)*units.meter/units.second)
+        result.min_height = np.squeeze(min_height_height)*units.meter
 
         return result
 
