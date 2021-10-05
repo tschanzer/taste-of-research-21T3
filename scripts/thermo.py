@@ -2,6 +2,15 @@
 # Thomas Schanzer, UNSW Sydney
 # October 2021
 
+import numpy as np
+
+import metpy.calc as mpcalc
+import metpy.constants as const
+from metpy.units import units
+from metpy.units import concatenate
+
+from scipy.optimize import root_scalar
+
 def moist_lapse(pressure, initial_temperature, reference_pressure=None):
     """
     Equivalent to metpy.calc.moist_lapse, circumventing bugs
@@ -11,12 +20,10 @@ def moist_lapse(pressure, initial_temperature, reference_pressure=None):
     if reference_pressure is None:
         reference_pressure = pressure[0]
     if pressure.size == 1:
-        if np.abs(pressure - reference_pressure).to(units.mbar).m >= 0.01:
-            return mpcalc.moist_lapse(
-                pressure, initial_temperature,
-                reference_pressure=reference_pressure)
-        else:
-            return initial_temperature
+        temperature = mpcalc.moist_lapse(
+            pressure, initial_temperature,
+            reference_pressure=reference_pressure)
+        return np.atleast_1d(temperature)[0]
     else:
         pressure = pressure[1:]
         temperature = mpcalc.moist_lapse(

@@ -3,7 +3,6 @@
 # September 2021
 
 import numpy as np
-import pandas as pd
 
 import metpy.calc as mpcalc
 import metpy.constants as const
