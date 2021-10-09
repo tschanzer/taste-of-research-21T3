@@ -32,6 +32,172 @@ def moist_lapse(pressure, initial_temperature, reference_pressure=None):
         return concatenate([initial_temperature, temperature])
 
 
+def theta_w(theta_e):
+    """
+    Calculates theta-w from theta-e using Eq. 3.8 of Davies-Jones 2008.
+
+    Args:
+        theta_e: Equivalent potential temperature.
+
+    Returns:
+        Wet bulb potential temperature.
+    """
+
+    theta_e = theta_e.m_as(units.kelvin)
+
+    C=273.15
+    X = theta_e/C
+
+    # coefficients
+    a0 = 7.101574
+    a1 = -20.68208
+    a2 = 16.11182
+    a3 = 2.574631
+    a4 = -5.205688
+    b1 = -3.552497
+    b2 = 3.781782
+    b3 = -0.6899655
+    b4 = -0.5929340
+
+    theta_w = (
+        theta_e - C
+        - np.exp((a0 + a1*X + a2*X**2 + a3*X**3 + a4*X**4)
+              /(1 + b1*X + b2*X**2 + b3*X**3 + b4*X**4))*(theta_e >= 173.15)
+    )
+
+    return theta_w*units.celsius
+
+
+def _daviesjones_f(Tw, pi):
+    """
+    Evaluates the function f defined in eq. 2.3 of Davies-Jones 2008.
+
+    Args:
+        Tw: Wet-bulb temperature in KELVIN.
+        pi: Nondimensional pressure.
+
+    Returns:
+        The value of f(Tw, pi).
+    """
+
+    pressure = 1000.0 * pi**3.504  # in mbar
+
+    # coefficients
+    k0 = 3036
+    k1 = 1.78
+    k2 = 0.448
+    nu = 0.2854  # poisson constant for dry air
+    C = 273.15
+
+    # saturation mixing ratio and vapour pressure calculated using
+    # eq. 10 of Bolton 1980
+    rs = mpcalc.saturation_mixing_ratio(
+        pressure*units.mbar, Tw*units.kelvin).m_as(units.dimensionless)
+    es = mpcalc.saturation_vapor_pressure(Tw*units.kelvin).m_as(units.mbar)
+
+    G = (k0/Tw - k1)*(rs + k2*rs**2)
+    f = (C/Tw)**3.504 * (1 - es/pressure)**(3.504*nu) * np.exp(-3.504*G)
+
+    return f
+
+
+def _daviesjones_fprime(tau, pi):
+    """
+    Evaluates df/dtau (pi fixed) defined in eqs. A.1-A.5 of Davies-Jones 2008.
+
+    Args:
+        tau: Temperature in KELVIN.
+        pi: Nondimensional pressure.
+
+    Returns:
+        The value of f'(Tau, pi) for fixed pi.
+    """
+
+    pressure = 1000.0 * pi**3.504  # in mbar
+
+    # coefficients
+    k0 = 3036
+    k1 = 1.78
+    k2 = 0.448
+    nu = 0.2854  # poisson constant for dry air
+    C = 273.15
+    epsilon = 0.6220
+
+    # saturation mixing ratio and vapour pressure calculated using
+    # eq. 10 of Bolton 1980
+    rs = mpcalc.saturation_mixing_ratio(
+        pressure*units.mbar, tau*units.kelvin).m_as(units.dimensionless)
+    es = mpcalc.saturation_vapor_pressure(tau*units.kelvin).m_as(units.mbar)
+
+    des_dtau = es*17.67*243.5/(tau - C + 243.5)**2  # eq. A.5
+    drs_dtau = epsilon*pressure/(pressure - es)**2 * des_dtau  # eq. A.4
+    dG_dtau = (-k0/tau**2 * (rs + k2*rs**2)
+               + (k0/tau - k1)*(1 + 2*k2*rs)*drs_dtau)  # eq. A.3
+    dlogf_dtau = -3.504*(1/tau + nu/(pressure - es)*des_dtau
+                         + dG_dtau)  # eq. A.2
+    df_dtau = _daviesjones_f(tau, pi) * dlogf_dtau  # eq. A.1
+
+    return df_dtau
+
+
+def wetbulb(pressure, theta_e, improve=False):
+    """
+    Calculates wet bulb temperature using the method in Davies-Jones 2008.
+
+    Args:
+        pressure: Pressure.
+        theta_e: Equivalent potential temperature.
+        improve: Whether or not to perform a single iteration of
+            Newton's method to improve accuracy (defaults to False).
+
+    Returns:
+        Wet bulb temperature.
+    """
+
+    # changing to correct units
+    pressure = pressure.m_as(units.mbar)
+    theta_e = theta_e.m_as(units.kelvin)
+
+    pi = (pressure/1000.0)**(1./3.504)
+    Teq = theta_e*pi
+    C = 273.15
+    X = (C/Teq)**3.504
+
+    # slope and intercept for guesses - eq. 4.3, 4.4
+    k1 = -38.5*pi**2 + 137.81*pi - 53.737
+    k2 = -4.392*pi**2 + 56.831*pi - 0.384
+
+    # transition point between approximation schemes - eq. 4.7
+    D = 1/(0.1859*pressure/1000 + 0.6512)
+
+    # initial guess
+    if X > D:
+        A = 2675.0
+        # saturation mixing ratio calculated via vapour pressure using
+        # eq. 10 of Bolton 1980
+        rs = mpcalc.saturation_mixing_ratio(
+            pressure*units.mbar, Teq*units.kelvin).m_as(units.dimensionless)
+        # d(log(e_s))/dT calculated also from eq. 10, Bolton 1980
+        d_log_es_dt = 17.67*243.5/(Teq + 243.5)**2
+
+        # approximate wet bulb temperature in celsius
+        Tw = Teq - C - A*rs/(1 + A*rs*d_log_es_dt)
+    elif 1 <= X <= D:
+        Tw = k1 - k2*X
+    elif 0.4 <= X < 1:
+        Tw = (k1 - 1.21) - (k2 - 1.21)*X
+    else:
+        Tw = (k1 - 2.66) - (k2 - 1.21)*X + 0.58/X
+
+    if improve:
+        # execute a single iteration of Newton's method (eq. 2.6)
+        slope = _daviesjones_fprime(Tw + C, pi)
+        fvalue = _daviesjones_f(Tw + C, pi)
+        Tw = Tw - (fvalue - X)/slope
+
+    return Tw*units.celsius
+
+
 # objective function for the root-finding algorithm
 def remaining_liquid_ratio(
         pressure, initial_pressure, initial_temperature,
