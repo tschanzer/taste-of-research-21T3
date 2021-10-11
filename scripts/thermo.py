@@ -198,6 +198,155 @@ def wetbulb(pressure, theta_e, improve=False):
     return Tw*units.celsius
 
 
+def _theta_e_prime(p, Tk, q):
+    """
+    Calculates the partial derivative of theta-e w.r.t. temperature.
+
+    Uses the approximation of theta-e given in eq. 39 of Bolton (1980).
+
+    Args:
+        p: Pressure.
+        Tk: Temperature.
+        q: Specific humidity.
+
+    Returns:
+        The partial derivative of equivalent potential temperature
+            with respect to temperature.
+    """
+
+    # ensure correct units
+    p = p.m_as(units.mbar)
+    Tk = Tk.m_as(units.kelvin)
+    if hasattr(q, 'units'):
+        q = q.m_as(units.dimensionless)
+
+    # constants
+    a = 17.67  # dimensionless
+    b = 243.5  # kelvin
+    C = 273.15  # 0C (kelvin)
+    e0 = 6.112  # saturation vapour pressure at 0C (mbar)
+    epsilon = const.epsilon.m  # molar mass ratio of dry air to water vapour
+    kappa = const.kappa.m # poisson constant of dry air
+
+    # other variables
+    es = e0*np.exp(a*(Tk - C)/(Tk - C + b))  # sat. vapour pressure in mbar
+    U = q/(1 - q)*(p - es)/(epsilon*es)  # relative humidity
+    e = U*es # vapour pressure in mbar
+    Td = b*np.log(U*es/e0)/(a - np.log(U*es/e0)) + C  # dew point in kelvin
+    r = q/(1-q)  # mixing ratio
+
+    # LCL temperature in kelvin
+    Tl = (1/(Td - 56) + np.log(Tk/Td)/800)**(-1) + 56
+    # LCL potential temperature in kelvin
+    thetadl = Tk*(1000/(p - e))**kappa*(Tk/Tl)**(0.28*r)
+    # equivalent potential temperature in kelvin
+    thetae = thetadl*np.exp((3036/Tl - 1.78)*r*(1 + 0.448*r))
+
+    # derivative of sat. vapour pressure w.r.t. temperature
+    dloges_dTk = a*b/(Tk - C + b)**2
+    # derivative of dew point w.r.t. temperature
+    dTd_dTk = a*b/(a - np.log(U*es/e0))**2 * dloges_dTk
+    # derivative of LCL temperature w.r.t. temperature
+    dTl_dTk = (-(1/(Td - 56) + np.log(Tk/Td)/800)**(-2)
+               *(-1/(Td - 56)**2*dTd_dTk + 1/800*(1/Tk - 1/Td*dTd_dTk)))
+    # derivative of log(LCL potential temperature) w.r.t. temperature
+    dlogthetadl_dTk = (1 + 0.28*r)/Tk - 0.28*r/Tl*dTl_dTk
+    # derivative of log(equivalent potential temperature) w.r.t. temperature
+    dlogthetae_dTk = dlogthetadl_dTk - 3036/Tl**2*r*(1 + 0.448*r)*dTl_dTk
+
+    return thetae*dlogthetae_dTk
+
+
+def saturation_specific_humidity(pressure, temperature):
+    return mpcalc.specific_humidity_from_mixing_ratio(
+        mpcalc.saturation_mixing_ratio(pressure, temperature))
+
+
+def theta_e(pressure, temperature, specific_humidity):
+    dewpoint = mpcalc.dewpoint_from_specific_humidity(
+        pressure, temperature, specific_humidity)
+    return mpcalc.equivalent_potential_temperature(
+        pressure, temperature, dewpoint)
+
+
+def descend(
+        pressure, temperature, specific_humidity, liquid_ratio,
+        reference_pressure, improve=1):
+    """
+    Calculates the temperature of a descending parcel.
+
+    Uses conservation of equivalent potential temperature to determine
+    the final temperature if the parcel switches from a moist to a dry
+    adiabat.
+
+    Args:
+        pressure: Final pressure.
+        temperature: Initial temperature.
+        specific_humidity: Initial specific humidity.
+        liquid_ratio: Initial liquid ratio.
+        reference_pressure: Initial pressure.
+        improve: Number of iterations to use if the parcel must switch
+            from moist to dry adiabat (default: 1). Alternatively,
+            specify False to skip iteration and take the moist
+            adiabatic value, or 'exact' to iterate until convergence.
+
+    Returns:
+        Final temperature, specific humidity and liquid ratio.
+    """
+
+    # calculate dry adiabatic value outside if statement since it
+    # is needed for the guess in case 2.2
+    t_final_dry = mpcalc.dry_lapse(pressure, temperature, reference_pressure)
+
+    if liquid_ratio <= 0:
+        # case 1: dry adiabat only
+        q_final = q_initial
+        l_final = 0*units.dimensionless
+        return t_final_dry, q_final, l_final
+    else:
+        # case 2: some moist descent
+        t_final_moist = moist_lapse(pressure, temperature, reference_pressure)
+        q_final_moist = saturation_specific_humidity(pressure, t_final_moist)
+        l_final_moist = specific_humidity + liquid_ratio - q_final_moist
+        if l_final_moist >= 0 or improve is False:
+            # case 2.1: moist adiabat only
+            return t_final_moist, q_final_moist, l_final_moist
+        else:
+            # case 2.2: adiabat switching
+            # use amount of liquid to place guess between dry and moist values
+            t_final_guess = (
+                t_final_dry.to(units.kelvin)
+                + liquid_ratio/(q_final_moist - specific_humidity).m
+                * (t_final_moist.to(units.kelvin)
+                   - t_final_dry.to(units.kelvin)))
+            q_final = specific_humidity + liquid_ratio
+            l_final = 0*units.dimensionless
+
+            theta_e_initial = theta_e(
+                reference_pressure, temperature,
+                specific_humidity).m_as(units.kelvin)
+            theta_e_difference = lambda T: (
+                theta_e(pressure, T*units.kelvin, q_final).m_as(units.kelvin)
+                - theta_e_initial)
+            theta_e_difference_prime = lambda T: (
+                _theta_e_prime(pressure, T*units.kelvin, q_final))
+            if improve == 'exact':
+                # iterate until convergence using Newton's method
+                sol = root_scalar(
+                    theta_e_difference, x0=t_final_guess.m,
+                    fprime=theta_e_difference_prime, method='newton')
+                t_final = sol.root*units.kelvin
+            else:
+                # apply a fixed number of iterations
+                t_final = t_final_guess.m
+                for i in range(improve):
+                    t_final = (t_final - theta_e_difference(t_final)
+                               / theta_e_difference_prime(t_final))
+                t_final = t_final*units.kelvin
+
+            return t_final, q_final, l_final
+
+
 # objective function for the root-finding algorithm
 def remaining_liquid_ratio(
         pressure, initial_pressure, initial_temperature,
