@@ -16,8 +16,9 @@ from scipy.optimize import root_scalar
 import sys
 
 from thermo import moist_lapse, remaining_liquid_ratio, evaporation_level
-from thermo import extra_liquid_descent_profile
+from thermo import extra_liquid_descent_profile, theta_e, wetbulb
 from thermo import specific_humidity_from_descent_profile
+from thermo import temperature_change, saturation_specific_humidity
 
 
 class MotionResult():
@@ -28,10 +29,11 @@ class MotionResult():
 
 class Environment():
     """
-    Class for parcel calculations on a real atmospheric sounding.
+    Class for atmospheric sounding data.
     """
 
-    def __init__(self, pressure, temperature, dewpoint, info='', name=''):
+    def __init__(
+            self, pressure, height, temperature, dewpoint, info='', name=''):
         """
         Instantiates an Environment.
 
@@ -44,63 +46,40 @@ class Environment():
             dewpoint: Dewpoint array in the sounding.
         """
 
-        self.pressure_raw = pressure.to(units.mbar)
-        self.temperature_raw = temperature.to(units.celsius)
-        self.dewpoint_raw = dewpoint.to(units.celsius)
+        self._pressure_raw = pressure.to(units.mbar)
+        self._height_raw = height.to(units.meter)
+        self._temperature_raw = temperature.to(units.celsius)
+        self._dewpoint_raw = dewpoint.to(units.celsius)
         self.info = info
         self.name = name
 
-        self.temperature_interp = interp1d(
-            self.pressure_raw.m, self.temperature_raw.m,
+        self._p_to_T_interp = interp1d(
+            self._pressure_raw.m, self._temperature_raw.m,
             fill_value='extrapolate')
-        self.dewpoint_interp = interp1d(
-            self.pressure_raw.m, self.dewpoint_raw.m,
+        self._z_to_T_interp = interp1d(
+            self._height_raw.m, self._temperature_raw.m,
             fill_value='extrapolate')
 
-        def dzdp(pressure, height):
-            """
-            Calculates the rate of height change w.r.t. pressure, dz/dp.
+        self._p_to_Td_interp = interp1d(
+            self._pressure_raw.m, self._dewpoint_raw.m,
+            fill_value='extrapolate')
+        self._z_to_Td_interp = interp1d(
+            self._height_raw.m, self._dewpoint_raw.m,
+            fill_value='extrapolate')
 
-            Args:
-                pressure: The pressure at the point of interest, in Pa.
-                height: The height of the point of interest, in m.
-
-            Returns:
-                The derivative dz/dp in m/Pa.
-            """
-
-            pressure = pressure*units.pascal
-            temperature = self.temperature_from_pressure(pressure)
-            dewpoint = self.dewpoint_from_pressure(pressure)
-
-            specific_humidity = mpcalc.specific_humidity_from_dewpoint(
-                pressure, dewpoint)
-            mixing_ratio = mpcalc.mixing_ratio_from_specific_humidity(
-                specific_humidity)
-            density = mpcalc.density(pressure, temperature, mixing_ratio)
-            dzdp = - 1 / (density.to(units.kg/units.meter**3).m * const.g)
-
-            return dzdp
-
-        def dpdz(height, pressure):
-            return 1 / dzdp(pressure, height)
-
-        # integrate the hydrostatic equation
-        p_min = np.min(self.pressure_raw).m * 1e2
-        p_max = np.max(self.pressure_raw).m * 1e2
-        self.dzdp_sol = solve_ivp(
-            dzdp, (p_max, p_min), [0], dense_output=True).sol
-
-        z_max = self.dzdp_sol(p_min).item()
-        self.dpdz_sol = solve_ivp(
-            dpdz, (0, z_max), [p_max], dense_output=True).sol
+        self._p_to_z_interp = interp1d(
+            self._pressure_raw.m, self._height_raw.m,
+            fill_value='extrapolate')
+        self._z_to_p_interp = interp1d(
+            self._height_raw.m, self._pressure_raw.m,
+            fill_value='extrapolate')
 
     def temperature_from_pressure(self, pressure):
         """
         Finds the environmental temperature at a given pressure.
         """
 
-        temperature = self.temperature_interp(pressure.to(units.mbar).m)
+        temperature = self._p_to_T_interp(pressure.m_as(units.mbar))
         if temperature.size == 1:
             temperature = temperature.item()
         return temperature*units.celsius
@@ -110,7 +89,7 @@ class Environment():
         Finds the environmental dew point at a given pressure.
         """
 
-        dewpoint = self.dewpoint_interp(pressure.to(units.mbar).m)
+        dewpoint = self._p_to_Td_interp(pressure.m_as(units.mbar))
         if dewpoint.size == 1:
             dewpoint = dewpoint.item()
         return dewpoint*units.celsius
@@ -120,19 +99,17 @@ class Environment():
         Finds the environmental pressure at a given height.
         """
 
-        height = np.atleast_1d(height).to(units.meter).m
-        pressure = self.dpdz_sol(height)[0,:]
+        pressure = self._z_to_p_interp(height.m_as(units.meter))
         if pressure.size == 1:
             pressure = pressure.item()
-        return (pressure*units.pascal).to(units.mbar)
+        return pressure*units.mbar
 
     def height(self, pressure):
         """
         Finds the height at a given environmental pressure.
         """
 
-        pressure = np.atleast_1d(pressure).to(units.pascal).m
-        height = self.dzdp_sol(pressure)[0,:]
+        height = self._p_to_z_interp(pressure.m_as(units.mbar))
         if height.size == 1:
             height = height.item()
         return height*units.meter
@@ -142,18 +119,20 @@ class Environment():
         Finds the environmental temperature at a given height.
         """
 
-        pressure = self.pressure(height)
-        temperature = self.temperature_from_pressure(pressure)
-        return temperature
+        temperature = self._z_to_T_interp(height.m_as(units.meter))
+        if temperature.size == 1:
+            temperature = temperature.item()
+        return temperature*units.celsius
 
     def dewpoint(self, height):
         """
         Finds the environmental dew point at a given height.
         """
 
-        pressure = self.pressure(height)
-        dewpoint = self.dewpoint_from_pressure(pressure)
-        return dewpoint
+        dewpoint = self._z_to_Td_interp(height.m_as(units.meter))
+        if dewpoint.size == 1:
+            dewpoint = dewpoint.item()
+        return dewpoint*units.celsius
 
     def wetbulb_temperature(self, height):
         """
@@ -161,11 +140,12 @@ class Environment():
         """
 
         pressure = self.pressure(height)
-        temperature = self.temperature_from_pressure(pressure)
-        dewpoint = self.dewpoint_from_pressure(pressure)
-        wetbulb_temperature = mpcalc.wet_bulb_temperature(
-            pressure, temperature, dewpoint)
-        return wetbulb_temperature
+        temperature = self.temperature(height)
+        dewpoint = self.dewpoint(height)
+        specific_humidity = mpcalc.specific_humidity_from_dewpoint(
+            pressure, dewpoint)
+        ept = theta_e(pressure, temperature, specific_humidity)
+        return wetbulb(pressure, ept, improve=True)
 
     def specific_humidity(self, height):
         """
@@ -173,44 +153,8 @@ class Environment():
         """
 
         pressure = self.pressure(height)
-        dewpoint = self.dewpoint_from_pressure(pressure)
-        specific_humidity = mpcalc.specific_humidity_from_dewpoint(
-            pressure, dewpoint)
-        return specific_humidity
-
-    def temperature_change(self, dq):
-        """
-        Calculates the temperature change due to evaporation of water.
-        """
-
-        dT = (- const.water_heat_vaporization
-              * dq / const.dry_air_spec_heat_press)
-        return dT.to(units.delta_degC)
-
-    def dq_root(self, dq, height):
-        """
-        Calculates the saturated vs. actual specific humidity difference.
-
-        Args:
-            dq: Specific humidity change resulting from evaporation.
-            height: Initial height of the parcel.
-
-        Returns:
-            The difference between saturated and actual specific
-                humidity at the temperature that results from the
-                evaporation.
-        """
-
-        pressure = self.pressure(height)
-        initial_temperature = self.temperature(height)
-        initial_specific_humidity = self.specific_humidity(height)
-
-        final_temperature = initial_temperature + self.temperature_change(dq)
-        saturation_mixing_ratio = mpcalc.saturation_mixing_ratio(
-            pressure, final_temperature)
-        saturation_specific_humidity = \
-            mpcalc.specific_humidity_from_mixing_ratio(saturation_mixing_ratio)
-        return saturation_specific_humidity - initial_specific_humidity - dq
+        dewpoint = self.dewpoint(height)
+        return mpcalc.specific_humidity_from_dewpoint(pressure, dewpoint)
 
     def maximum_specific_humidity_change(self, height):
         """
@@ -219,9 +163,22 @@ class Environment():
         Finds the root of dq_root at the specified height.
         """
 
+        pressure = self.pressure(height)
+        initial_temperature = self.temperature(height)
+        initial_specific_humidity = self.specific_humidity(height)
+
+        def dq_root(dq):
+            """
+            Calculates the saturated vs. actual specific humidity difference.
+            """
+
+            final_temperature = initial_temperature + temperature_change(dq)
+            q_sat = saturation_specific_humidity(pressure, final_temperature)
+            return q_sat - initial_specific_humidity - dq
+
         height = np.atleast_1d(height)
         sol = [
-            root_scalar(self.dq_root, args=(z,), bracket=[0, 20e-3]).root
+            root_scalar(dq_root, args=(z,), bracket=[0, 20e-3]).root
             for z in height]
         return np.squeeze(concatenate(sol)) * 1
 
@@ -231,16 +188,10 @@ class Environment():
         """
 
         pressure = self.pressure(height)
-        dewpoint = self.dewpoint(height)
         temperature = self.temperature(height)
-
-        specific_humidity = mpcalc.specific_humidity_from_dewpoint(
-            pressure, dewpoint)
         mixing_ratio = mpcalc.mixing_ratio_from_specific_humidity(
-            specific_humidity)
-        density = mpcalc.density(pressure, temperature, mixing_ratio)
-
-        return density
+            self.specific_humidity(height))
+        return mpcalc.density(pressure, temperature, mixing_ratio)
 
     def dry_parcel_density(
             self, height, initial_height, specific_humidity_change):
@@ -265,8 +216,7 @@ class Environment():
         initial_pressure = self.pressure(initial_height)
         pressure = self.pressure(height)
         initial_temperature = (self.temperature(initial_height)
-                               + self.temperature_change(
-                                   specific_humidity_change))
+                               + temperature_change(specific_humidity_change))
         specific_humidity = (self.specific_humidity(initial_height)
                              + specific_humidity_change)
         mixing_ratio = mpcalc.mixing_ratio_from_specific_humidity(
