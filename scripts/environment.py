@@ -33,23 +33,39 @@ class Environment():
     """
 
     def __init__(
-            self, pressure, height, temperature, dewpoint, info='', name=''):
+            self, pressure, height, temperature, dewpoint, liquid_ratio=None,
+            info='', name=''):
         """
         Instantiates an Environment.
 
-        Allows all variables to be calculated as functions of height
-        rather than pressure by assuming hydrostatic balance.
-
         Args:
             pressure: Pressure array in the sounding.
+            height: Height array in the sounding.
             temperature: Temperature array in the sounding.
             dewpoint: Dewpoint array in the sounding.
+            liquid_ratio: Array of liquid water partial density to
+                total density in the sounding (optional, defaults to
+                all zero).
+            info: Information to store with the sounding, e.g. date
+                (optional)
+            name: Short name for the sounding, e.g. 'Sydney' (optional).
         """
 
         self._pressure_raw = pressure.to(units.mbar)
         self._height_raw = height.to(units.meter)
+        self._height_raw -= np.min(self._height_raw)  # set z=0 at surface
         self._temperature_raw = temperature.to(units.celsius)
         self._dewpoint_raw = dewpoint.to(units.celsius)
+
+        if liquid_ratio is None:
+            self._liquid_ratio_raw = (
+                np.zeros(self._pressure_raw.size)*units.dimensionless)
+        else:
+            if hasattr(liquid_ratio, 'units'):
+                self._liquid_ratio_raw = liquid_ratio.to(units.dimensionless)
+            else:
+                self._liquid_ratio_raw = liquid_ratio*units.dimensionless
+
         self.info = info
         self.name = name
 
@@ -65,6 +81,13 @@ class Environment():
             fill_value='extrapolate')
         self._z_to_Td_interp = interp1d(
             self._height_raw.m, self._dewpoint_raw.m,
+            fill_value='extrapolate')
+
+        self._p_to_l_interp = interp1d(
+            self._pressure_raw.m, self._liquid_ratio_raw.m,
+            fill_value='extrapolate')
+        self._z_to_l_interp = interp1d(
+            self._height_raw.m, self._liquid_ratio_raw.m,
             fill_value='extrapolate')
 
         self._p_to_z_interp = interp1d(
@@ -93,6 +116,16 @@ class Environment():
         if dewpoint.size == 1:
             dewpoint = dewpoint.item()
         return dewpoint*units.celsius
+
+    def liquid_ratio_from_pressure(self, pressure):
+        """
+        Finds the environmental dew point at a given pressure.
+        """
+
+        l = self._p_to_l_interp(pressure.m_as(units.mbar))
+        if l.size == 1:
+            l = l.item()
+        return l*units.dimensionless
 
     def pressure(self, height):
         """
@@ -133,6 +166,16 @@ class Environment():
         if dewpoint.size == 1:
             dewpoint = dewpoint.item()
         return dewpoint*units.celsius
+
+    def liquid_ratio(self, height):
+        """
+        Finds the environmental dew point at a given height.
+        """
+
+        l = self._z_to_l_interp(height.m_as(units.meter))
+        if l.size == 1:
+            l = l.item()
+        return l*units.dimensionless
 
     def wetbulb_temperature(self, height):
         """
