@@ -207,11 +207,8 @@ class Environment:
             q_sat = saturation_specific_humidity(pressure, final_temperature)
             return q_sat - initial_specific_humidity - dq
 
-        height = np.atleast_1d(height)
-        sol = [
-            root_scalar(dq_root, args=(z,), bracket=[0, 20e-3]).root
-            for z in height]
-        return np.squeeze(concatenate(sol)) * 1
+        sol = root_scalar(dq_root, bracket=[0, 20e-3])
+        return sol.root*units.dimensionless
 
     def density(self, height):
         """
