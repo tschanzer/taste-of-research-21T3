@@ -198,7 +198,7 @@ def wetbulb(pressure, theta_e, improve=False):
     return Tw*units.celsius
 
 
-def theta_e(p, Tk, q, prime=False, with_units=False):
+def theta_e(p, Tk, q, prime=False, with_units=True):
     """
     Calculates the partial derivative of theta-e w.r.t. temperature.
 
@@ -297,7 +297,7 @@ def descend(
 
     if liquid_ratio <= 0:
         # case 1: dry adiabat only
-        q_final = q_initial
+        q_final = specific_humidity
         l_final = 0*units.dimensionless
         return t_final_dry, q_final, l_final
     else:
@@ -320,12 +320,14 @@ def descend(
             l_final = 0*units.dimensionless
 
             theta_e_initial = theta_e(
-                reference_pressure, temperature, specific_humidity)
+                reference_pressure, temperature, specific_humidity,
+                with_units=False)
             if improve == 'exact':
                 # iterate until convergence using Newton's method
                 def root_function(T):
                     value, slope = theta_e(
-                        pressure, T*units.kelvin, q_final, prime=True)
+                        pressure, T*units.kelvin, q_final, prime=True,
+                        with_units=False)
                     return value - theta_e_initial, slope
                 sol = root_scalar(
                     root_function, x0=t_final_guess.m,
@@ -336,7 +338,8 @@ def descend(
                 t_final = t_final_guess.m
                 for i in range(improve):
                     value, slope = theta_e(
-                        pressure, t_final*units.kelvin, q_final, prime=True)
+                        pressure, t_final*units.kelvin, q_final, prime=True,
+                        with_units=False)
                     t_final = t_final - (value - theta_e_initial)/slope
                 t_final = t_final*units.kelvin
 
