@@ -32,6 +32,16 @@ def moist_lapse(pressure, initial_temperature, reference_pressure=None):
         return concatenate([initial_temperature, temperature])
 
 
+def temperature_change(dq):
+    """
+    Calculates the temperature change due to evaporation of water.
+    """
+
+    dT = (- const.water_heat_vaporization
+          * dq / const.dry_air_spec_heat_press)
+    return dT.to(units.delta_degC)
+
+
 def theta_w(theta_e):
     """
     Calculates theta-w from theta-e using Eq. 3.8 of Davies-Jones 2008.
