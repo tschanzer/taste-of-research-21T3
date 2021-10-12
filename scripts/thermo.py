@@ -198,7 +198,7 @@ def wetbulb(pressure, theta_e, improve=False):
     return Tw*units.celsius
 
 
-def _theta_e_prime(p, Tk, q):
+def theta_e(p, Tk, q, prime=False, with_units=False):
     """
     Calculates the partial derivative of theta-e w.r.t. temperature.
 
@@ -242,6 +242,9 @@ def _theta_e_prime(p, Tk, q):
     # equivalent potential temperature in kelvin
     thetae = thetadl*np.exp((3036/Tl - 1.78)*r*(1 + 0.448*r))
 
+    if prime is False:
+        return thetae if with_units is False else thetae*units.kelvin
+
     # derivative of sat. vapour pressure w.r.t. temperature
     dloges_dTk = a*b/(Tk - C + b)**2
     # derivative of dew point w.r.t. temperature
@@ -254,19 +257,13 @@ def _theta_e_prime(p, Tk, q):
     # derivative of log(equivalent potential temperature) w.r.t. temperature
     dlogthetae_dTk = dlogthetadl_dTk - 3036/Tl**2*r*(1 + 0.448*r)*dTl_dTk
 
-    return thetae*dlogthetae_dTk
+    return (thetae if with_units is False else thetae*units.kelvin,
+            thetae*dlogthetae_dTk)
 
 
 def saturation_specific_humidity(pressure, temperature):
     return mpcalc.specific_humidity_from_mixing_ratio(
         mpcalc.saturation_mixing_ratio(pressure, temperature))
-
-
-def theta_e(pressure, temperature, specific_humidity):
-    dewpoint = mpcalc.dewpoint_from_specific_humidity(
-        pressure, temperature, specific_humidity)
-    return mpcalc.equivalent_potential_temperature(
-        pressure, temperature, dewpoint)
 
 
 def descend(
@@ -323,25 +320,24 @@ def descend(
             l_final = 0*units.dimensionless
 
             theta_e_initial = theta_e(
-                reference_pressure, temperature,
-                specific_humidity).m_as(units.kelvin)
-            theta_e_difference = lambda T: (
-                theta_e(pressure, T*units.kelvin, q_final).m_as(units.kelvin)
-                - theta_e_initial)
-            theta_e_difference_prime = lambda T: (
-                _theta_e_prime(pressure, T*units.kelvin, q_final))
+                reference_pressure, temperature, specific_humidity)
             if improve == 'exact':
                 # iterate until convergence using Newton's method
+                def root_function(T):
+                    value, slope = theta_e(
+                        pressure, T*units.kelvin, q_final, prime=True)
+                    return value - theta_e_initial, slope
                 sol = root_scalar(
-                    theta_e_difference, x0=t_final_guess.m,
-                    fprime=theta_e_difference_prime, method='newton')
+                    root_function, x0=t_final_guess.m,
+                    fprime=True, method='newton')
                 t_final = sol.root*units.kelvin
             else:
                 # apply a fixed number of iterations
                 t_final = t_final_guess.m
                 for i in range(improve):
-                    t_final = (t_final - theta_e_difference(t_final)
-                               / theta_e_difference_prime(t_final))
+                    value, slope = theta_e(
+                        pressure, t_final*units.kelvin, q_final, prime=True)
+                    t_final = t_final - (value - theta_e_initial)/slope
                 t_final = t_final*units.kelvin
 
             return t_final, q_final, l_final
