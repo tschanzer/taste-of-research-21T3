@@ -11,6 +11,9 @@ from metpy.units import concatenate
 
 from scipy.optimize import root_scalar
 
+
+# ---------- Basic thermodynamic calculations ----------
+
 def moist_lapse(pressure, initial_temperature, reference_pressure=None):
     """
     Equivalent to metpy.calc.moist_lapse, circumventing bugs
@@ -41,6 +44,76 @@ def temperature_change(dq):
           * dq / const.dry_air_spec_heat_press)
     return dT.to(units.delta_degC)
 
+
+def saturation_specific_humidity(pressure, temperature):
+    return mpcalc.specific_humidity_from_mixing_ratio(
+        mpcalc.saturation_mixing_ratio(pressure, temperature))
+
+
+def theta_e(p, Tk, q, prime=False, with_units=True):
+    """
+    Calculates the partial derivative of theta-e w.r.t. temperature.
+
+    Uses the approximation of theta-e given in eq. 39 of Bolton (1980).
+
+    Args:
+        p: Pressure.
+        Tk: Temperature.
+        q: Specific humidity.
+
+    Returns:
+        The partial derivative of equivalent potential temperature
+            with respect to temperature.
+    """
+
+    # ensure correct units
+    p = p.m_as(units.mbar)
+    Tk = Tk.m_as(units.kelvin)
+    if hasattr(q, 'units'):
+        q = q.m_as(units.dimensionless)
+
+    # constants
+    a = 17.67  # dimensionless
+    b = 243.5  # kelvin
+    C = 273.15  # 0C (kelvin)
+    e0 = 6.112  # saturation vapour pressure at 0C (mbar)
+    epsilon = const.epsilon.m  # molar mass ratio of dry air to water vapour
+    kappa = const.kappa.m # poisson constant of dry air
+
+    # other variables
+    es = e0*np.exp(a*(Tk - C)/(Tk - C + b))  # sat. vapour pressure in mbar
+    U = q/(1 - q)*(p - es)/(epsilon*es)  # relative humidity
+    e = U*es # vapour pressure in mbar
+    Td = b*np.log(U*es/e0)/(a - np.log(U*es/e0)) + C  # dew point in kelvin
+    r = q/(1-q)  # mixing ratio
+
+    # LCL temperature in kelvin
+    Tl = (1/(Td - 56) + np.log(Tk/Td)/800)**(-1) + 56
+    # LCL potential temperature in kelvin
+    thetadl = Tk*(1000/(p - e))**kappa*(Tk/Tl)**(0.28*r)
+    # equivalent potential temperature in kelvin
+    thetae = thetadl*np.exp((3036/Tl - 1.78)*r*(1 + 0.448*r))
+
+    if prime is False:
+        return thetae if with_units is False else thetae*units.kelvin
+
+    # derivative of sat. vapour pressure w.r.t. temperature
+    dloges_dTk = a*b/(Tk - C + b)**2
+    # derivative of dew point w.r.t. temperature
+    dTd_dTk = a*b/(a - np.log(U*es/e0))**2 * dloges_dTk
+    # derivative of LCL temperature w.r.t. temperature
+    dTl_dTk = (-(1/(Td - 56) + np.log(Tk/Td)/800)**(-2)
+               *(-1/(Td - 56)**2*dTd_dTk + 1/800*(1/Tk - 1/Td*dTd_dTk)))
+    # derivative of log(LCL potential temperature) w.r.t. temperature
+    dlogthetadl_dTk = (1 + 0.28*r)/Tk - 0.28*r/Tl*dTl_dTk
+    # derivative of log(equivalent potential temperature) w.r.t. temperature
+    dlogthetae_dTk = dlogthetadl_dTk - 3036/Tl**2*r*(1 + 0.448*r)*dTl_dTk
+
+    return (thetae if with_units is False else thetae*units.kelvin,
+            thetae*dlogthetae_dTk)
+
+
+# ---------- theta-w and T_w calculations from Davies-Jones 2008 ----------
 
 def theta_w(theta_e):
     """
@@ -208,73 +281,7 @@ def wetbulb(pressure, theta_e, improve=False):
     return Tw*units.celsius
 
 
-def theta_e(p, Tk, q, prime=False, with_units=True):
-    """
-    Calculates the partial derivative of theta-e w.r.t. temperature.
-
-    Uses the approximation of theta-e given in eq. 39 of Bolton (1980).
-
-    Args:
-        p: Pressure.
-        Tk: Temperature.
-        q: Specific humidity.
-
-    Returns:
-        The partial derivative of equivalent potential temperature
-            with respect to temperature.
-    """
-
-    # ensure correct units
-    p = p.m_as(units.mbar)
-    Tk = Tk.m_as(units.kelvin)
-    if hasattr(q, 'units'):
-        q = q.m_as(units.dimensionless)
-
-    # constants
-    a = 17.67  # dimensionless
-    b = 243.5  # kelvin
-    C = 273.15  # 0C (kelvin)
-    e0 = 6.112  # saturation vapour pressure at 0C (mbar)
-    epsilon = const.epsilon.m  # molar mass ratio of dry air to water vapour
-    kappa = const.kappa.m # poisson constant of dry air
-
-    # other variables
-    es = e0*np.exp(a*(Tk - C)/(Tk - C + b))  # sat. vapour pressure in mbar
-    U = q/(1 - q)*(p - es)/(epsilon*es)  # relative humidity
-    e = U*es # vapour pressure in mbar
-    Td = b*np.log(U*es/e0)/(a - np.log(U*es/e0)) + C  # dew point in kelvin
-    r = q/(1-q)  # mixing ratio
-
-    # LCL temperature in kelvin
-    Tl = (1/(Td - 56) + np.log(Tk/Td)/800)**(-1) + 56
-    # LCL potential temperature in kelvin
-    thetadl = Tk*(1000/(p - e))**kappa*(Tk/Tl)**(0.28*r)
-    # equivalent potential temperature in kelvin
-    thetae = thetadl*np.exp((3036/Tl - 1.78)*r*(1 + 0.448*r))
-
-    if prime is False:
-        return thetae if with_units is False else thetae*units.kelvin
-
-    # derivative of sat. vapour pressure w.r.t. temperature
-    dloges_dTk = a*b/(Tk - C + b)**2
-    # derivative of dew point w.r.t. temperature
-    dTd_dTk = a*b/(a - np.log(U*es/e0))**2 * dloges_dTk
-    # derivative of LCL temperature w.r.t. temperature
-    dTl_dTk = (-(1/(Td - 56) + np.log(Tk/Td)/800)**(-2)
-               *(-1/(Td - 56)**2*dTd_dTk + 1/800*(1/Tk - 1/Td*dTd_dTk)))
-    # derivative of log(LCL potential temperature) w.r.t. temperature
-    dlogthetadl_dTk = (1 + 0.28*r)/Tk - 0.28*r/Tl*dTl_dTk
-    # derivative of log(equivalent potential temperature) w.r.t. temperature
-    dlogthetae_dTk = dlogthetadl_dTk - 3036/Tl**2*r*(1 + 0.448*r)*dTl_dTk
-
-    return (thetae if with_units is False else thetae*units.kelvin,
-            thetae*dlogthetae_dTk)
-
-
-def saturation_specific_humidity(pressure, temperature):
-    return mpcalc.specific_humidity_from_mixing_ratio(
-        mpcalc.saturation_mixing_ratio(pressure, temperature))
-
+# ---------- adiabatic descent calculation ----------
 
 def descend(
         pressure, temperature, specific_humidity, liquid_ratio,
@@ -355,6 +362,84 @@ def descend(
 
             return t_final, q_final, l_final
 
+
+# ---------- entrainment calculations ----------
+
+def mix(parcel, environment, rate, dz):
+    """
+    Mixes parcel and environment variables (for entrainment).
+
+    Args:
+        parcel: Parcel value.
+        environment: Environment value.
+        rate: Entrainment rate.
+        dz: Distance descended.
+
+    Returns:
+        Mixed value of the variable.
+    """
+
+    return parcel + rate * (environment - parcel) * dz
+
+
+def equilibrate(
+        pressure, t_parcel, q_parcel, l_parcel, t_env, q_env, l_env, rate, dz):
+    """
+    Finds parcel properties after entrainment and phase equilibration.
+
+    Args:
+        pressure: Pressure during the change (constant).
+        t_parcel: Initial temperature of the parcel.
+        q_parcel: Initial specific humidity of the parcel.
+        l_parcel: Initial ratio of liquid mass to parcel mass.
+        t_env: Temperature of the environment.
+        q_env: Specific humidity of the environment.
+        l_env: Liquid ratio of the environment.
+        rate: Entrainment rate.
+        dz: Distance descended.
+
+    Returns:
+        A tuple containing the final parcel temperature, specific
+            humidity and liquid ratio.
+    """
+
+    # mixing without phase change
+    t_mixed = mix(t_parcel, t_env, rate, dz)
+    q_mixed = mix(q_parcel, q_env, rate, dz)
+    l_mixed = mix(l_parcel, l_env, rate, dz)
+    q_mixed_saturated = saturation_specific_humidity(pressure, t_mixed)
+
+    if q_mixed > q_mixed_saturated:
+        # we need to condense water vapour
+        ept = theta_e(pressure, t_mixed, q_mixed)
+        t_final = wetbulb(pressure, ept, improve=True)
+        q_final = saturation_specific_humidity(pressure, t_final)
+        l_final = l_mixed + q_mixed - q_final
+        return (t_final, q_final, l_final)
+    elif q_mixed < q_mixed_saturated and l_mixed > 0:
+        # we need to evaporate liquid water.
+        # if all liquid evaporates:
+        t_all_evap = t_mixed + temperature_change(l_mixed)
+        q_all_evap_saturated = saturation_specific_humidity(
+            pressure, t_all_evap)
+
+        if q_mixed + l_mixed <= q_all_evap_saturated:
+            return (t_all_evap, q_mixed + l_mixed, 0*units.dimensionless)
+        else:
+            ept = theta_e(pressure, t_mixed, q_mixed)
+            t_final = wetbulb(pressure, ept, improve=True)
+            q_final = saturation_specific_humidity(pressure, t_final)
+            l_final = l_mixed + q_mixed - q_final
+            return (t_final, q_final, l_final)
+    elif q_mixed < q_mixed_saturated and l_mixed <= 0:
+        # already in equilibrium, no action needed
+        return (t_mixed, q_mixed, 0*units.dimensionless)
+    else:
+        # parcel is perfectly saturated, no action needed
+        return (t_mixed, q_mixed, l_mixed)
+
+
+# ---------- old functions (to be removed) ----------
 
 # objective function for the root-finding algorithm
 def remaining_liquid_ratio(
