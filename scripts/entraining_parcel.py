@@ -65,7 +65,7 @@ class EntrainingParcel:
         t_final, q_final, l_final = descend(
             p_final, t_eq, q_eq, l_eq, p_initial, improve=3)
 
-    return (t_final, q_final, l_final)
+        return (t_final, q_final, l_final)
 
     def profile(
             self, height, t_initial, q_initial, l_initial, rate,
@@ -92,6 +92,9 @@ class EntrainingParcel:
         dz = dz.m_as(units.meter)
         if reference_height is not None:
             reference_height = reference_height.m_as(units.meter)
+            if height.size == 1 and height.item() == reference_height:
+                # no descent needed, return initial values
+                return t_initial, q_initial, l_initial
 
         # create height array with correct spacing
         if reference_height is None or reference_height == height[0]:
