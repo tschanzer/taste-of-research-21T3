@@ -11,8 +11,13 @@ from metpy.units import units
 from metpy.units import concatenate
 
 from scipy.interpolate import interp1d
+from scipy.integrate import solve_ivp
 
 from thermo import descend, equilibrate
+
+
+class MotionResult:
+    pass
 
 
 class EntrainingParcel:
@@ -132,3 +137,153 @@ class EntrainingParcel:
             l_out = l_out.item()
 
         return t_out, q_out, l_out
+    
+    def density(
+            self, height, initial_height, t_initial, q_initial, l_initial,
+            rate, step=50*units.meter):
+        """
+        Calculates parcel density as a function of height.
+
+        Args:
+            height: Height of the parcel.
+            initial_height: Initial height.
+            t_initial: Initial temperature.
+            q_initial: Initial specific humidity.
+            l_initial: Initial liquid ratio.
+            rate: Entrainment rate.
+            step: Step size for entrainment calculation.
+
+        Returns:
+            The density of the parcel at <height>.
+        """
+
+        t_final, q_final, l_final = self.profile(
+            height, t_initial, q_initial, l_initial, rate, dz=step,
+            reference_height=initial_height)
+        r_final = mpcalc.mixing_ratio_from_specific_humidity(q_final)
+        p_final = self._env.pressure(height)
+
+        gas_density = mpcalc.density(p_final, t_final, r_final)
+        return gas_density/(1 - l_final)  # liquid mass correction
+    
+    def buoyancy(
+            self, height, initial_height, t_initial, q_initial, l_initial,
+            rate, step=50*units.meter):
+        """
+        Calculates parcel buoyancy as a function of height.
+
+        Args:
+            height: Height of the parcel.
+            initial_height: Initial height.
+            t_initial: Initial temperature.
+            q_initial: Initial specific humidity.
+            l_initial: Initial liquid ratio.
+            rate: Entrainment rate.
+            step: Step size for entrainment calculation.
+
+        Returns:
+            The buoyancy of the parcel at <height>.
+        """
+
+        env_density = self._env.density(height)
+        pcl_density = self.density(
+            height, initial_height, t_initial, q_initial, l_initial, rate,
+            step)
+
+        return (env_density - pcl_density)/pcl_density*const.g
+    
+    def motion(
+            self, time, initial_height, initial_velocity, t_initial,
+            q_initial, l_initial, rate, step=50*units.meter):
+        """
+        Solves the equation of motion for the parcel.
+
+        Args:
+            time: Array of times for which the results will be reported.
+            initial_height: Initial height.
+            initial_velocity: Initial vertical velocity.
+            t_initial: Initial temperature.
+            q_initial: Initial specific humidity.
+            l_initial: Initial liquid ratio.
+            rate: Entrainment rate.
+            step: Step size for entrainment calculation.
+
+        Returns:
+            An instance of MotionResult.
+        """
+
+        def motion_ode(time, state, *args):
+            height = np.max([state[0], 0])*units.meter
+            b = self.buoyancy(height, *args)
+            return [state[1], b.m]
+
+        initial_height = initial_height.m_as(units.meter)
+        initial_velocity = initial_velocity.m_as(units.meter/units.second)
+        time = time.to(units.second).m
+
+        # event function for solve_ivp, zero when parcel reaches min height
+        min_height = lambda time, state, *args: state[1]
+        min_height.direction = 1  # find zero that goes from - to +
+        min_height.terminal = True  # stop integration at minimum height
+
+        # event function for solve_ivp, zero when parcel hits ground
+        hit_ground = lambda time, state, *args: state[0]
+        hit_ground.terminal = True  # stop integration at ground
+
+        # event function for solve_ivp, zero when parcel is neutrally
+        # buoyant
+        neutral_buoyancy = lambda time, state, *args: motion_ode(
+            time, state, *args)[1]
+
+        # prepare empty arrays for data
+        height = np.zeros(len(time))
+        height[:] = np.nan
+        velocity = np.zeros(len(time))
+        velocity[:] = np.nan
+
+        sol = solve_ivp(
+            motion_ode,
+            [np.min(time), np.max(time)],
+            [initial_height, initial_velocity],
+            t_eval=time,
+            args=(
+                initial_height*units.meter, t_initial,
+                q_initial, l_initial, rate, step),
+            events=[neutral_buoyancy, hit_ground, min_height])
+
+        height[:len(sol.y[0,:])] = sol.y[0,:]
+        velocity[:len(sol.y[1,:])] = sol.y[1,:]
+
+        # record times of events
+        # sol.t_events[i].size == 0 means the event did not occur
+        neutral_buoyancy_time = (  # record only the first instance
+            sol.t_events[0][0] if sol.t_events[0].size > 0 else np.nan)
+        hit_ground_time = (
+            sol.t_events[1][0] if sol.t_events[1].size > 0 else np.nan)
+        min_height_time = (
+            sol.t_events[2][0] if sol.t_events[2].size > 0 else np.nan)
+
+        # record states at event times
+        neutral_buoyancy_height = (  # record only the first instance
+            sol.y_events[0][0,0] if sol.y_events[0].size > 0 else np.nan)
+        neutral_buoyancy_velocity = (  # record only the first instance
+            sol.y_events[0][0,1] if sol.y_events[0].size > 0 else np.nan)
+        hit_ground_velocity = (
+            sol.y_events[1][0,1] if sol.y_events[1].size > 0 else np.nan)
+        min_height_height = (
+            sol.y_events[2][0,0] if sol.y_events[2].size > 0 else np.nan)
+
+        result = MotionResult()
+        result.height = height*units.meter
+        result.velocity = velocity*units.meter/units.second
+        result.neutral_buoyancy_time = neutral_buoyancy_time*units.second
+        result.hit_ground_time = hit_ground_time*units.second
+        result.min_height_time = min_height_time*units.second
+        result.neutral_buoyancy_height = neutral_buoyancy_height*units.meter
+        result.neutral_buoyancy_velocity = (
+            neutral_buoyancy_velocity*units.meter/units.second)
+        result.hit_ground_velocity = (
+            hit_ground_velocity*units.meter/units.second)
+        result.min_height = min_height_height*units.meter
+
+        return result
