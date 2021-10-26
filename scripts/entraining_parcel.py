@@ -9,6 +9,7 @@ import numpy as np
 import metpy.calc as mpcalc
 from metpy.units import units
 from metpy.units import concatenate
+import metpy.constants as const
 
 from scipy.interpolate import interp1d
 from scipy.integrate import solve_ivp
@@ -240,6 +241,8 @@ class EntrainingParcel:
         height[:] = np.nan
         velocity = np.zeros(len(time))
         velocity[:] = np.nan
+        massflux = np.zeros(len(time))
+        massflux[:] = np.nan
 
         sol = solve_ivp(
             motion_ode,
@@ -253,6 +256,11 @@ class EntrainingParcel:
 
         height[:len(sol.y[0,:])] = sol.y[0,:]
         velocity[:len(sol.y[1,:])] = sol.y[1,:]
+        density = self.density(
+            sol.y[0,:]*units.meter, initial_height*units.meter,
+            t_initial, q_initial, l_initial, rate, step)
+        density = density.m_as(units.kilogram/units.meter**3)
+        massflux[:len(sol.y[1,:])] = density*sol.y[1,:]
 
         # record times of events
         # sol.t_events[i].size == 0 means the event did not occur
@@ -276,6 +284,7 @@ class EntrainingParcel:
         result = MotionResult()
         result.height = height*units.meter
         result.velocity = velocity*units.meter/units.second
+        result.massflux = massflux*units.kilogram/units.meter**2/units.second
         result.neutral_buoyancy_time = neutral_buoyancy_time*units.second
         result.hit_ground_time = hit_ground_time*units.second
         result.min_height_time = min_height_time*units.second
