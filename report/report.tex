@@ -17,7 +17,6 @@
 	siunitx,
 }
 
-\graphicspath{{figures/}}
 
 % \addbibresource{references.bib}
 
@@ -58,7 +57,7 @@
             
         \vspace{1.5cm}
             
-        \includegraphics[width=0.4\textwidth]{unsw}
+        \includegraphics[width=0.4\textwidth]{figures/unsw}
 
         \vspace{1cm}
 
@@ -103,7 +102,81 @@ Acknowledgements
 \section{Methods}
 
 \section{Results}
+\subsection{Entrainment reduces downdraft strength}
 
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=0.8\linewidth]
+		{figures/20211026_experiments_sydney/entrainment_rate_vs_motion}
+	\caption{
+		Height and velocity over time of a parcels, initial height
+		$\SI{5}{\kilo\meter}$, that are initially cooled by evaporation to
+		the point of saturation. We use sounding data from Sydney
+		for the environmental temperature and dew point profiles.}
+	\label{sydney_entrainment_rate_vs_motion}
+\end{figure}
+
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=0.8\linewidth]
+		{figures/20211027_experiments_singapore/entrainment_rate_vs_motion}
+	\caption{
+		The results of the same calculation used for Figure
+		\ref{sydney_entrainment_rate_vs_motion}, but using sounding data
+		from Singapore for the environmental temperature and dew point
+		profiles.}
+	\label{singapore_entrainment_rate_vs_motion}
+\end{figure}
+
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=0.8\linewidth]
+		{figures/20211026_experiments_sydney/entrainment_rate_vs_velocity}
+	\caption{
+		Maximum and height-averaged downdraft velocities from Figure
+		\ref{sydney_entrainment_rate_vs_motion}, (using Sydney sounding
+		data).}
+	\label{sydney_entrainment_rate_vs_velocity}
+\end{figure}
+
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=0.8\linewidth]
+		{figures/20211027_experiments_singapore/entrainment_rate_vs_velocity}
+	\caption{
+		Maximum and height-averaged downdraft velocities from Figure
+		\ref{singapore_entrainment_rate_vs_motion}, (using Singapore sounding
+		data).}
+	\label{singapore_entrainment_rate_vs_velocity}
+\end{figure}
+
+
+\clearpage
+\subsection{Initial addition of water increases downdraft strength}
+
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=0.8\linewidth]
+		{figures/20211026_experiments_sydney/initial_conditions_vs_velocity}
+	\caption{
+		Maximum and height-averaged downdraft velocities computed as
+		functions of the amount of water initially added. Dashed lines
+		indicate that enough water is initially evaporated to saturate
+		the parcel; the rest remains in the parcel as liquid and can
+		evaporate during descent. The entrainment rate is fixed at
+		$\SI{1}{\per\kilo\meter}$ and we use the Sydney sounding data.}
+	\label{sydney_initial_conditions_vs_velocity}
+\end{figure}
+
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=0.8\linewidth]
+		{figures/20211027_experiments_singapore/initial_conditions_vs_velocity}
+	\caption{
+		The result shown in Figure \ref{sydney_initial_conditions_vs_velocity},
+		now using the Singapore sounding data.}
+	\label{singapore_initial_conditions_vs_velocity}
+\end{figure}
 
 % \clearpage
 % \printbibliography
