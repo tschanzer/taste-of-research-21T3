@@ -98,7 +98,7 @@ class EntrainingParcel:
         dz = dz.m_as(units.meter)
         if reference_height is not None:
             reference_height = reference_height.m_as(units.meter)
-            if height.size == 1 and height.item() == reference_height:
+            if height.size == 1 and height.item() >= reference_height:
                 # no descent needed, return initial values
                 return t_initial, q_initial, l_initial
 
