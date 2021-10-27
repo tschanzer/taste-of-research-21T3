@@ -1,0 +1,111 @@
+\documentclass[12pt,titlepage]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper, total={16cm, 22cm}]{geometry}
+\usepackage[
+	backend=biber,
+	bibstyle=authoryear,
+	citestyle=authoryear-comp,
+	sorting=nyt,
+	uniquename=false,
+	maxbibnames=99
+]{biblatex}
+\usepackage{
+	fancyhdr,
+	amsmath,
+	amssymb,
+	graphicx,
+	siunitx,
+}
+
+\graphicspath{{figures/}}
+
+% \addbibresource{references.bib}
+
+\setlength{\parskip}{1em}
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Thomas Schanzer}
+\lhead{}
+\lfoot{\leftmark}
+\rfoot{Page \thepage}
+\setlength{\headheight}{15pt}
+\renewcommand{\headrulewidth}{2pt}
+\renewcommand{\footrulewidth}{1pt}
+\fancypagestyle{first}{
+	\fancyhead{}
+	\fancyfoot{}
+	\renewcommand{\headrulewidth}{0pt}
+	\renewcommand{\footrulewidth}{0pt}
+}
+
+\begin{document}
+
+% \includepdf[pages=-]{coversheet.pdf}
+
+\begin{titlepage}
+    \begin{center}
+        
+        \vspace{1cm} 
+        \Huge
+        \textbf{Title}
+        
+        \Large
+        \textbf{Subtitle}
+            
+        \vspace{0.75cm}
+            
+        \textbf{Thomas D. Schanzer}
+            
+        \vspace{1.5cm}
+            
+        \includegraphics[width=0.4\textwidth]{unsw}
+
+        \vspace{1cm}
+
+        \large    
+        Taste of Research 2021
+
+        \vspace{1cm}
+            
+        \large
+        School of Physics\\
+        Faculty of Science\\
+        University of New South Wales\\
+        Sydney, Australia\\
+        \vspace{0.5cm}
+        Term 3 2021
+        \vfil
+            
+    \end{center}
+\end{titlepage}
+
+\begin{center}
+	\large
+	\textbf{Abstract}
+\end{center}
+
+Abstract
+
+\begin{center}
+	\large
+	\textbf{Acknowledgements}
+\end{center}
+
+Acknowledgements
+
+\tableofcontents
+
+\clearpage
+\section{Introduction and theory}
+
+\section{Literature review}
+
+\section{Methods}
+
+\section{Results}
+
+
+% \clearpage
+% \printbibliography
+
+\end{document}
