@@ -448,6 +448,8 @@ def reversible_lapse(
     pressure = np.atleast_1d(pressure).m_as(units.mbar)
     if reference_pressure is None:
         reference_pressure = pressure[0]
+    else:
+        reference_pressure = reference_pressure.m_as(units.mbar)
     
     # initial values
     reference_pi = (reference_pressure/1000.0)**(1./3.504)
@@ -459,7 +461,8 @@ def reversible_lapse(
         
     # see eq. 5.3 of Davies-Jones 2008
     f_initial = _daviesjones_f(
-        initial_temperature, reference_pi, Q=Q, kind='reversible')
+        initial_temperature.m_as(units.kelvin), reference_pi, Q=Q,
+        kind='reversible')
     A1 = f_initial**(-1/3.504)*C/reference_pi
     
     def single(p):
@@ -467,8 +470,8 @@ def reversible_lapse(
         
         # initial guess using pseudoadiabat
         temperature = moist_lapse(
-            p, initial_temperature,
-            reference_pressure, improve=False).m_as(units.celsius)
+            p*units.mbar, initial_temperature,
+            reference_pressure*units.mbar, improve=False).m_as(units.celsius)
 
         pi = (p/1000.0)**(1./3.504)
         X = (C/(A1*pi))**3.504
