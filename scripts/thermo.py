@@ -9,31 +9,64 @@ import metpy.constants as const
 from metpy.units import units
 from metpy.units import concatenate
 
-from scipy.optimize import root_scalar
+from scipy.optimize import minimize_scalar, root_scalar
+from scipy.integrate import simps
 
 
 # ---------- Basic thermodynamic calculations ----------
 
-def moist_lapse(pressure, initial_temperature, reference_pressure=None):
+def moist_lapse(
+        pressure, initial_temperature, reference_pressure=None,
+        method='fast', improve=True):
     """
-    Equivalent to metpy.calc.moist_lapse, circumventing bugs
+    Computes temperature from pressure along pseudoadiabats.
+    
+    Args:
+        pressure: Array of pressures for which the temperature is to
+            be found.
+        initial_temperature: Initial parcel temperature.
+        reference_pressure: The pressure corresponding to
+            initial_temperature. Optional, defaults to pressure[0].
+        method: 'integration' for the MetPy method, 'fast' for
+            the Davies-Jones (2008) method.
+        improve: Whether or not to apply an iteration of Newton's
+            method (only relevant for method == 'fast').
+    
+    Returns:
+        Array of final temperatures.
     """
 
     pressure = np.atleast_1d(pressure)
     if reference_pressure is None:
         reference_pressure = pressure[0]
-    if pressure.size == 1:
-        temperature = mpcalc.moist_lapse(
-            pressure, initial_temperature,
-            reference_pressure=reference_pressure)
-        return np.atleast_1d(temperature)[0]
+    if method == 'integration':
+        if pressure.size == 1:
+            temperature = mpcalc.moist_lapse(
+                pressure, initial_temperature,
+                reference_pressure=reference_pressure)
+            return np.atleast_1d(temperature)[0]
+        else:
+            pressure = pressure[1:]
+            temperature = mpcalc.moist_lapse(
+                pressure, initial_temperature,
+                reference_pressure=reference_pressure)
+            return concatenate([initial_temperature, temperature])
+    elif method == 'fast':
+        q_initial = saturation_specific_humidity(
+            reference_pressure, initial_temperature)
+        # find initial theta-e (equal to final theta-e)
+        thetae_conserved = theta_e(
+            reference_pressure, initial_temperature, q_initial)
+        # final temperature is equal to final wet bulb temperature
+        temperature = concatenate([
+            wetbulb(p, thetae_conserved, improve) for p in pressure
+        ])
+        if temperature.size == 1:
+            return temperature.item()
+        else:
+            return temperature
     else:
-        pressure = pressure[1:]
-        temperature = mpcalc.moist_lapse(
-            pressure, initial_temperature,
-            reference_pressure=reference_pressure)
-        return concatenate([initial_temperature, temperature])
-
+        raise ValueError("method must be 'fast' or 'integration'.")
 
 def temperature_change(dq):
     """
@@ -46,13 +79,15 @@ def temperature_change(dq):
 
 
 def saturation_specific_humidity(pressure, temperature):
+    """Calculates saturation specific humidity."""
+    
     return mpcalc.specific_humidity_from_mixing_ratio(
         mpcalc.saturation_mixing_ratio(pressure, temperature))
 
 
 def theta_e(p, Tk, q, prime=False, with_units=True):
     """
-    Calculates the partial derivative of theta-e w.r.t. temperature.
+    Calculates equivalent potential temperature.
 
     Uses the approximation of theta-e given in eq. 39 of Bolton (1980).
 
@@ -60,10 +95,15 @@ def theta_e(p, Tk, q, prime=False, with_units=True):
         p: Pressure.
         Tk: Temperature.
         q: Specific humidity.
+        prime: Whether or not to also return the derivative of
+            theta-e with respect to temperature at the given temperature
+            and pressure (optional, defaults to False).
+        with_units: Whether or not to return a result with units
+            (optional, defaults to True).
 
     Returns:
-        The partial derivative of equivalent potential temperature
-            with respect to temperature.
+        The equivalent potential temperature (and its derivative
+        w.r.t. temperature if prime=True).
     """
 
     # ensure correct units
@@ -175,7 +215,7 @@ def dcape_dcin(sounding, samples=10000):
     return dcape, dcin
 
 
-# ---------- theta-w and T_w calculations from Davies-Jones 2008 ----------
+# ---------- Calculations from Davies-Jones 2008 ----------
 
 def theta_w(theta_e):
     """
@@ -213,13 +253,17 @@ def theta_w(theta_e):
     return theta_w*units.celsius
 
 
-def _daviesjones_f(Tw, pi):
+def _daviesjones_f(Tw, pi, Q=None, kind='pseudo'):
     """
     Evaluates the function f defined in eq. 2.3 of Davies-Jones 2008.
 
     Args:
         Tw: Wet-bulb temperature in KELVIN.
         pi: Nondimensional pressure.
+        Q: total mixing ratio of all phases of water (only needed for
+            reversible adiabats).
+        kind: 'pseudo' for pseudoadiabats and 'reversible' for
+            reversible adiabats.
 
     Returns:
         The value of f(Tw, pi).
@@ -228,12 +272,28 @@ def _daviesjones_f(Tw, pi):
     pressure = 1000.0 * pi**3.504  # in mbar
 
     # coefficients
-    k0 = 3036
-    k1 = 1.78
-    k2 = 0.448
-    nu = 0.2854  # poisson constant for dry air
     C = 273.15
-
+    if kind == 'pseudo':
+        k0 = 3036
+        k1 = 1.78
+        k2 = 0.448
+        nu = 0.2854  # poisson constant for dry air
+    elif kind == 'reversible':
+        if Q is None:
+            raise ValueError(
+                'Total water mixing ratio Q must be supplied for '
+                'reversible adiabats.')
+        L0 = 2.501e6
+        L1 = 2.37e3
+        cpd = const.dry_air_spec_heat_press.m
+        cw = 4190.  # specific heat of liquid water
+        k0 = (L0 + L1*C)/(cpd + cw*Q)
+        k1 = L1/(cpd + cw*Q)
+        k2 = 0
+        nu = const.dry_air_gas_constant.m/(cpd + cw*Q)
+    else:
+        raise ValueError("kind must be 'pseudo' or 'reversible'.")
+        
     # saturation mixing ratio and vapour pressure calculated using
     # eq. 10 of Bolton 1980
     rs = mpcalc.saturation_mixing_ratio(
@@ -246,13 +306,17 @@ def _daviesjones_f(Tw, pi):
     return f
 
 
-def _daviesjones_fprime(tau, pi):
+def _daviesjones_fprime(tau, pi, Q=None, kind='pseudo'):
     """
     Evaluates df/dtau (pi fixed) defined in eqs. A.1-A.5 of Davies-Jones 2008.
 
     Args:
         tau: Temperature in KELVIN.
         pi: Nondimensional pressure.
+        Q: total mixing ratio of all phases of water (only needed for
+            reversible adiabats).
+        kind: 'pseudo' for pseudoadiabats and 'reversible' for
+            reversible adiabats.
 
     Returns:
         The value of f'(Tau, pi) for fixed pi.
@@ -261,12 +325,28 @@ def _daviesjones_fprime(tau, pi):
     pressure = 1000.0 * pi**3.504  # in mbar
 
     # coefficients
-    k0 = 3036
-    k1 = 1.78
-    k2 = 0.448
-    nu = 0.2854  # poisson constant for dry air
     C = 273.15
     epsilon = 0.6220
+    if kind == 'pseudo':
+        k0 = 3036
+        k1 = 1.78
+        k2 = 0.448
+        nu = 0.2854  # poisson constant for dry air
+    elif kind == 'reversible':
+        if Q is None:
+            raise ValueError(
+                'Total water mixing ratio Q must be supplied for '
+                'reversible adiabats.')
+        L0 = 2.501e6
+        L1 = 2.37e3
+        cpd = const.dry_air_spec_heat_press.m
+        cw = 4190.  # specific heat of liquid water
+        k0 = (L0 + L1*C)/(cpd + cw*Q)
+        k1 = L1/(cpd + cw*Q)
+        k2 = 0
+        nu = const.dry_air_gas_constant.m/(cpd + cw*Q)
+    else:
+        raise ValueError("kind must be 'pseudo' or 'reversible'.")
 
     # saturation mixing ratio and vapour pressure calculated using
     # eq. 10 of Bolton 1980
@@ -285,7 +365,7 @@ def _daviesjones_fprime(tau, pi):
     return df_dtau
 
 
-def wetbulb(pressure, theta_e, improve=False):
+def wetbulb(pressure, theta_e, improve=True):
     """
     Calculates wet bulb temperature using the method in Davies-Jones 2008.
 
@@ -343,11 +423,74 @@ def wetbulb(pressure, theta_e, improve=False):
     return Tw*units.celsius
 
 
+def reversible_lapse(
+        pressure, initial_temperature, q_initial, initial_liquid_ratio,
+        reference_pressure=None, improve=2):
+    """
+    Computes temperature along reversible adiabats.
+    
+    Uses the method of Davies-Jones (2008).
+    
+    Args:
+        pressure: Array of pressures for which the temperature is to
+            be found.
+        initial_temperature: Initial parcel temperature.
+        q_initial: Initial specific humidity.
+        initial_liquid_ratio: Initial ratio of liquid mass to total.
+        reference_pressure: The pressure corresponding to
+            initial_temperature. Optional, defaults to pressure[0].
+        improve: Number of iterations of Newton's method to execute.
+    
+    Returns:
+        Array of final temperatures.
+    """
+    
+    pressure = np.atleast_1d(pressure).m_as(units.mbar)
+    if reference_pressure is None:
+        reference_pressure = pressure[0]
+    
+    # initial values
+    reference_pi = (reference_pressure/1000.0)**(1./3.504)
+    C = 273.15
+    Q = (q_initial/(1 - q_initial)  # total mixing ratio
+         + initial_liquid_ratio/(1 - initial_liquid_ratio))
+    if hasattr(Q, 'units'):
+        Q = Q.m_as(units.dimensionless)  # make sure Q is a number
+        
+    # see eq. 5.3 of Davies-Jones 2008
+    f_initial = _daviesjones_f(
+        initial_temperature, reference_pi, Q=Q, kind='reversible')
+    A1 = f_initial**(-1/3.504)*C/reference_pi
+    
+    def single(p):
+        """Finds the final temperature for a single pressure value."""
+        
+        # initial guess using pseudoadiabat
+        temperature = moist_lapse(
+            p, initial_temperature,
+            reference_pressure, improve=False).m_as(units.celsius)
+
+        pi = (p/1000.0)**(1./3.504)
+        X = (C/(A1*pi))**3.504
+        for i in range(improve):
+            # apply iterations of Newton's method (eq. 2.6)
+            slope = _daviesjones_fprime(
+                temperature + C, pi, Q=Q, kind='reversible')
+            fvalue = _daviesjones_f(
+                temperature + C, pi, Q=Q, kind='reversible')
+            temperature = temperature - (fvalue - X)/slope
+        
+        return temperature
+        
+    return ([single(p) for p in pressure] if pressure.size > 1
+            else single(pressure.item()))*units.celsius
+    
+
 # ---------- adiabatic descent calculation ----------
 
 def descend(
         pressure, temperature, specific_humidity, liquid_ratio,
-        reference_pressure, improve=1):
+        reference_pressure, improve=1, improve_reversible=2, kind='pseudo'):
     """
     Calculates the temperature of a descending parcel.
 
@@ -365,6 +508,10 @@ def descend(
             from moist to dry adiabat (default: 1). Alternatively,
             specify False to skip iteration and take the moist
             adiabatic value, or 'exact' to iterate until convergence.
+        improve_reversible: Number of iterations to use for reversible
+            adiabat calculation.
+        kind: 'pseudo' for pseudoadiabats, 'reversible' for reversible
+            adiabats.
 
     Returns:
         Final temperature, specific humidity and liquid ratio.
@@ -381,9 +528,18 @@ def descend(
         return t_final_dry, q_final, l_final
     else:
         # case 2: some moist descent
-        t_final_moist = moist_lapse(pressure, temperature, reference_pressure)
+        if kind == 'pseudo':
+            t_final_moist = moist_lapse(
+                pressure, temperature, reference_pressure)
+        elif kind == 'reversible':
+            t_final_moist = reversible_lapse(
+                pressure, temperature, specific_humidity, liquid_ratio,
+                reference_pressure, improve=improve_reversible)
+        else:
+            raise ValueError("kind must be 'pseudo' or 'reversible'.")
         q_final_moist = saturation_specific_humidity(pressure, t_final_moist)
         l_final_moist = specific_humidity + liquid_ratio - q_final_moist
+        
         if l_final_moist >= 0 or improve is False:
             # case 2.1: moist adiabat only
             return t_final_moist, q_final_moist, l_final_moist
