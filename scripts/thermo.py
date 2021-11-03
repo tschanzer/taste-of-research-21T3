@@ -17,7 +17,7 @@ from scipy.integrate import simps
 
 def moist_lapse(
         pressure, initial_temperature, reference_pressure=None,
-        method='fast', improve=True):
+        method='integration', improve=True):
     """
     Computes temperature from pressure along pseudoadiabats.
     
@@ -35,7 +35,7 @@ def moist_lapse(
     Returns:
         Array of final temperatures.
     """
-
+    
     pressure = np.atleast_1d(pressure)
     if reference_pressure is None:
         reference_pressure = pressure[0]
@@ -176,7 +176,8 @@ def dcape_dcin(sounding, samples=10000):
     def integrand(z_final):
         z_final = z_final*units.meter
         p_final = sounding.pressure(z_final)
-        t_final = moist_lapse(p_final, t_initial, p_initial)
+        t_final = moist_lapse(
+            p_final, t_initial, p_initial, method='integration')
         w_final = mpcalc.saturation_mixing_ratio(p_final, t_final)
         tv_final = mpcalc.virtual_temperature(t_final, w_final)
         
@@ -198,8 +199,12 @@ def dcape_dcin(sounding, samples=10000):
         # create an interval [x0, x0 + 100] and shift until f(x0)
         # and f(x0 + 100) have different signs
         x0 = z_initial - 100
-        while integrand(x0)*integrand(x0 + 100) > 0:
+        while integrand(x0)*integrand(x0 + 100) > 0 and x0 >= -200:
             x0 -= 100
+        if x0 <= -200:
+            raise RuntimeError(
+                'Failed to find a bracketing interval for the neutral '
+                'buoyancy level.')
     
     # find neutral buoyancy level (integrand == 0)
     nb_level = root_scalar(
@@ -471,7 +476,8 @@ def reversible_lapse(
         # initial guess using pseudoadiabat
         temperature = moist_lapse(
             p*units.mbar, initial_temperature,
-            reference_pressure*units.mbar, improve=False).m_as(units.celsius)
+            reference_pressure*units.mbar, method='fast',
+            improve=False).m_as(units.celsius)
 
         pi = (p/1000.0)**(1./3.504)
         X = (C/(A1*pi))**3.504
