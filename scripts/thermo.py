@@ -428,7 +428,7 @@ def wetbulb(pressure, theta_e, improve=True):
     return Tw*units.celsius
 
 
-def reversible_lapse(
+def reversible_lapse_daviesjones(
         pressure, initial_temperature, initial_liquid_ratio,
         reference_pressure=None, improve=2):
     """
@@ -497,13 +497,96 @@ def reversible_lapse(
         
     return ([single(p) for p in pressure] if pressure.size > 1
             else single(pressure.item()))*units.celsius
+
+
+def reversible_lapse_saunders(
+        pressure, t_initial, l_initial, reference_pressure=None, improve=2):
+    """
+    Calculates temperature along reversible adiabats.
+    
+    Uses Eq. 3 of Saunders (1957).
+    
+    Args:
+        pressure: Pressure array.
+        t_initial: Initial temperature.
+        l_initial: Initial ratio of liquid mass to total
+        reference_pressure: Pressure corresponding to t_inital.
+        improve: Number of Newton's method iterations to use.
+        
+    Returns:
+        Resultant temperature array.
+    """
+    
+    pressure = np.atleast_1d(pressure).m_as(units.mbar)
+    if reference_pressure is None:
+        reference_pressure = pressure[0]
+    else:
+        reference_pressure = reference_pressure.m_as(units.mbar)
+        
+    t_initial = t_initial.m_as(units.kelvin)
+    if hasattr(l_initial, 'units'):
+        l_initial = l_initial.m_as(units.dimensionless)
+    
+    # constants
+    cp = const.dry_air_spec_heat_press.m
+    cw = const.water_specific_heat.m*1e3
+    R = const.dry_air_gas_constant.m
+    C = 273.15
+    e0 = 6.112
+    a = 17.67
+    b = 243.5
+    epsilon = const.epsilon.m
+    L0 = 2.501e6
+    L1 = 2.37e3
+    
+    # total vapour + liquid water mixing ratio (invariant)
+    q_initial = saturation_specific_humidity(
+        reference_pressure*units.mbar, t_initial*units.kelvin).m
+    r = (q_initial + l_initial)/(1 - q_initial - l_initial)
+    
+    def saunders_function(p, t):
+        """Evaluates the LHS of Eq. 3 and its derivative w.r.t. temperature"""
+        
+        # saturation vapour pressure and derivative
+        es = e0*np.exp(a*(t - C)/(t - C + b))
+        des_dt = a*b/(t - C + b)**2 * es
+        
+        # saturation (vapour) mixing ratio and derivative
+        rw = epsilon*es/(p - es)
+        drw_dt = epsilon*p*des_dt/(p - es)**2
+        
+        # latent heat of vapourisation of water and derivative
+        Lv = L0 - L1*(t - C)
+        dLv_dt = -L1
+        
+        # LHS of Eq. 3 and derivative
+        fvalue = (cp + r*cw)*np.log(t) + rw*Lv/t - R*np.log(p - es)
+        fprime = ((cp + r*cw)/t + (t*(drw_dt*Lv + rw*dLv_dt) - rw*Lv)/t**2
+                  + R*des_dt/(p - es))
+        
+        return fvalue, fprime
+    
+    # RHS of Eq. 3
+    A, _ = saunders_function(reference_pressure, t_initial)
+    
+    # initial guess: pseudoadiabatic values
+    t_final = moist_lapse(
+        pressure*units.mbar, t_initial*units.kelvin,
+        reference_pressure*units.mbar).m_as(units.kelvin)
+    
+    # apply Newton's method
+    for i in range(improve):
+        fvalue, fprime = saunders_function(pressure, t_final)
+        t_final = t_final - (fvalue - A)/fprime
+    
+    return t_final*units.kelvin
     
 
 # ---------- adiabatic descent calculation ----------
 
 def descend(
         pressure, temperature, specific_humidity, liquid_ratio,
-        reference_pressure, improve=1, improve_reversible=2, kind='pseudo'):
+        reference_pressure, improve=2, improve_reversible=2, kind='pseudo'):
     """
     Calculates the temperature of a descending parcel.
 
@@ -545,8 +628,8 @@ def descend(
             t_final_moist = moist_lapse(
                 pressure, temperature, reference_pressure)
         elif kind == 'reversible':
-            t_final_moist = reversible_lapse(
-                pressure, temperature, specific_humidity, liquid_ratio,
+            t_final_moist = reversible_lapse_saunders(
+                pressure, temperature, liquid_ratio,
                 reference_pressure, improve=improve_reversible)
         else:
             raise ValueError("kind must be 'pseudo' or 'reversible'.")
