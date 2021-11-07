@@ -429,7 +429,7 @@ def wetbulb(pressure, theta_e, improve=True):
 
 
 def reversible_lapse(
-        pressure, initial_temperature, q_initial, initial_liquid_ratio,
+        pressure, initial_temperature, initial_liquid_ratio,
         reference_pressure=None, improve=2):
     """
     Computes temperature along reversible adiabats.
@@ -456,11 +456,15 @@ def reversible_lapse(
     else:
         reference_pressure = reference_pressure.m_as(units.mbar)
     
-    # initial values
+    # nondimensional pressure
     reference_pi = (reference_pressure/1000.0)**(1./3.504)
     C = 273.15
-    Q = (q_initial/(1 - q_initial)  # total mixing ratio
-         + initial_liquid_ratio/(1 - initial_liquid_ratio))
+    # initial specific humidity is saturated specific humidity
+    q_initial = saturation_specific_humidity(
+        pressure[0]*units.mbar, initial_temperature).m
+    # total mixing ratio (liquid + vapour)
+    Q = ((q_initial + initial_liquid_ratio)
+         /(1 - q_initial - initial_liquid_ratio))
     if hasattr(Q, 'units'):
         Q = Q.m_as(units.dimensionless)  # make sure Q is a number
         
