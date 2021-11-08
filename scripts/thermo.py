@@ -189,33 +189,14 @@ def dcape_dcin(sounding, samples=10000):
         result = 1 - tv_final.m_as(units.kelvin)/tv_env.m_as(units.kelvin)
         return result
     
-    # check whether a neutral buoyancy level exists
-    if np.min(integrand(np.linspace(0, z_initial, 6000))) > 0:
-        # no neutral buoyancy level, integrate from surface for DCAPE
-        z_dcape = np.linspace(0, z_initial, samples)
-        dcape = simps(integrand(z_dcape), z_dcape)*units.meter*const.g
-        return dcape, 0*units.meter**2/units.second**2  # DCIN == 0
-    else:
-        # create an interval [x0, x0 + 100] and shift until f(x0)
-        # and f(x0 + 100) have different signs
-        x0 = z_initial - 100
-        while integrand(x0)*integrand(x0 + 100) > 0 and x0 >= -200:
-            x0 -= 100
-        if x0 <= -200:
-            raise RuntimeError(
-                'Failed to find a bracketing interval for the neutral '
-                'buoyancy level.')
-    
-    # find neutral buoyancy level (integrand == 0)
-    nb_level = root_scalar(
-        integrand, bracket=[x0, x0 + 100], method='brentq').root
-    
     # DCAPE: integrate from neutral buoyancy level to min. wetbulb level
-    z_dcape = np.linspace(nb_level, z_initial, samples)
-    dcape = simps(integrand(z_dcape), z_dcape)*units.meter*const.g
+    z_dcape = np.linspace(0, z_initial, samples)
+    dcape = simps(
+        np.maximum(integrand(z_dcape), 0), z_dcape)*units.meter*const.g
     # DCIN: integrate from surface to neutral buoyancy level
-    z_dcin = np.linspace(0, nb_level, samples)
-    dcin = simps(integrand(z_dcin), z_dcin)*units.meter*const.g
+    z_dcin = np.linspace(0, z_initial, samples)
+    dcin = simps(
+        np.minimum(integrand(z_dcin), 0), z_dcin)*units.meter*const.g
     
     return dcape, dcin
 
