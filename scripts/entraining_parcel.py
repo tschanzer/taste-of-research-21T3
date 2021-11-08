@@ -37,7 +37,7 @@ class EntrainingParcel:
 
         self._env = environment
 
-    def _entrain_discrete(self, height, state, rate, dz):
+    def _entrain_discrete(self, height, state, rate, dz, kind='pseudo'):
         """
         Finds parcel properties after descent/entrainment.
 
@@ -49,6 +49,8 @@ class EntrainingParcel:
                 and liquid ratio.
             rate: Entrainment rate.
             dz: Size of *downward* step, i.e. initial minus final height.
+            kind: 'pseudo' for pseudoadiabats, 'reversible' for reversible
+                adiabats.
 
         Returns:
             3-tuple of final temperature, specific humidity and liquid ratio.
@@ -69,13 +71,13 @@ class EntrainingParcel:
 
         # step 3: dry or moist adiabatic descent
         t_final, q_final, l_final = descend(
-            p_final, t_eq, q_eq, l_eq, p_initial, improve=3)
+            p_final, t_eq, q_eq, l_eq, p_initial, kind=kind)
 
         return (t_final, q_final, l_final)
 
     def profile(
             self, height, t_initial, q_initial, l_initial, rate,
-            dz=50*units.meter, reference_height=None):
+            dz=50*units.meter, reference_height=None, kind='pseudo'):
         """
         Calculates parcel properties for descent with entrainment.
 
@@ -88,6 +90,8 @@ class EntrainingParcel:
             l_initial: Initial parcel liquid ratio.
             rate: Entrainment rate.
             dz: Size of *downward* step for computing finite differences.
+            kind: 'pseudo' for pseudoadiabats, 'reversible' for reversible
+                adiabats.
 
         Returns:
             3-tuple containing the temperature, specific humidity and
@@ -115,7 +119,7 @@ class EntrainingParcel:
         for i in range(all_heights.size - 1):
             next_state = self._entrain_discrete(
                 all_heights[i], sol_states[i], rate,
-                all_heights[i] - all_heights[i+1])
+                all_heights[i] - all_heights[i+1], kind=kind)
             sol_states.append(next_state)
 
         t_sol = concatenate(
@@ -141,7 +145,7 @@ class EntrainingParcel:
     
     def density(
             self, height, initial_height, t_initial, q_initial, l_initial,
-            rate, step=50*units.meter):
+            rate, step=50*units.meter, kind='pseudo', liquid_correction=True):
         """
         Calculates parcel density as a function of height.
 
@@ -153,6 +157,10 @@ class EntrainingParcel:
             l_initial: Initial liquid ratio.
             rate: Entrainment rate.
             step: Step size for entrainment calculation.
+            kind: 'pseudo' for pseudoadiabats, 'reversible' for reversible
+                adiabats.
+            liquid_correction: Whether or not to account for the mass
+                of liquid water.
 
         Returns:
             The density of the parcel at <height>.
@@ -160,16 +168,16 @@ class EntrainingParcel:
 
         t_final, q_final, l_final = self.profile(
             height, t_initial, q_initial, l_initial, rate, dz=step,
-            reference_height=initial_height)
+            reference_height=initial_height, kind=kind)
         r_final = mpcalc.mixing_ratio_from_specific_humidity(q_final)
         p_final = self._env.pressure(height)
 
         gas_density = mpcalc.density(p_final, t_final, r_final)
-        return gas_density/(1 - l_final)  # liquid mass correction
+        return gas_density/(1 - l_final.m*liquid_correction)
     
     def buoyancy(
             self, height, initial_height, t_initial, q_initial, l_initial,
-            rate, step=50*units.meter):
+            rate, step=50*units.meter, kind='pseudo', liquid_correction=True):
         """
         Calculates parcel buoyancy as a function of height.
 
@@ -181,6 +189,10 @@ class EntrainingParcel:
             l_initial: Initial liquid ratio.
             rate: Entrainment rate.
             step: Step size for entrainment calculation.
+            kind: 'pseudo' for pseudoadiabats, 'reversible' for reversible
+                adiabats.
+            liquid_correction: Whether or not to account for the mass
+                of liquid water.
 
         Returns:
             The buoyancy of the parcel at <height>.
@@ -189,13 +201,14 @@ class EntrainingParcel:
         env_density = self._env.density(height)
         pcl_density = self.density(
             height, initial_height, t_initial, q_initial, l_initial, rate,
-            step)
+            step, kind=kind, liquid_correction=liquid_correction)
 
         return (env_density - pcl_density)/pcl_density*const.g
     
     def motion(
             self, time, initial_height, initial_velocity, t_initial,
-            q_initial, l_initial, rate, step=50*units.meter):
+            q_initial, l_initial, rate, step=50*units.meter,
+            kind='pseudo', liquid_correction=True):
         """
         Solves the equation of motion for the parcel.
 
@@ -208,6 +221,10 @@ class EntrainingParcel:
             l_initial: Initial liquid ratio.
             rate: Entrainment rate.
             step: Step size for entrainment calculation.
+            kind: 'pseudo' for pseudoadiabats, 'reversible' for reversible
+                adiabats.
+            liquid_correction: Whether or not to account for the mass
+                of liquid water.
 
         Returns:
             An instance of MotionResult.
@@ -215,7 +232,8 @@ class EntrainingParcel:
 
         def motion_ode(time, state, *args):
             height = np.max([state[0], 0])*units.meter
-            b = self.buoyancy(height, *args)
+            b = self.buoyancy(
+                height, *args, kind=kind, liquid_correction=liquid_correction)
             return [state[1], b.m]
 
         initial_height = initial_height.m_as(units.meter)
@@ -241,8 +259,6 @@ class EntrainingParcel:
         height[:] = np.nan
         velocity = np.zeros(len(time))
         velocity[:] = np.nan
-        massflux = np.zeros(len(time))
-        massflux[:] = np.nan
 
         sol = solve_ivp(
             motion_ode,
@@ -256,11 +272,6 @@ class EntrainingParcel:
 
         height[:len(sol.y[0,:])] = sol.y[0,:]
         velocity[:len(sol.y[1,:])] = sol.y[1,:]
-        density = self.density(
-            sol.y[0,:]*units.meter, initial_height*units.meter,
-            t_initial, q_initial, l_initial, rate, step)
-        density = density.m_as(units.kilogram/units.meter**3)
-        massflux[:len(sol.y[1,:])] = density*sol.y[1,:]
 
         # record times of events
         # sol.t_events[i].size == 0 means the event did not occur
@@ -284,7 +295,6 @@ class EntrainingParcel:
         result = MotionResult()
         result.height = height*units.meter
         result.velocity = velocity*units.meter/units.second
-        result.massflux = massflux*units.kilogram/units.meter**2/units.second
         result.neutral_buoyancy_time = neutral_buoyancy_time*units.second
         result.hit_ground_time = hit_ground_time*units.second
         result.min_height_time = min_height_time*units.second
