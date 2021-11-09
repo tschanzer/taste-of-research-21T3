@@ -37,32 +37,36 @@
 	\renewcommand{\footrulewidth}{0pt}
 }
 
+\newcommand{\dcape}{\mathrm{DCAPE}}
+\newcommand{\dcin}{\mathrm{DCIN}}
+
 \begin{document}
 
 % \includepdf[pages=-]{coversheet.pdf}
 
 \begin{titlepage}
     \begin{center}
-        
-        \vspace{1cm} 
+        ~
+
+        \vspace{3cm}
         \Huge
-        \textbf{Title}
+        \textbf{%
+        	A Simple Parcel Theory Model of Downdrafts in Convective Clouds}
         
-        \Large
-        \textbf{Subtitle}
-            
         \vspace{0.75cm}
-            
+        \Large
         \textbf{Thomas D. Schanzer}
             
-        \vspace{1.5cm}
+        \vfill
             
-        \includegraphics[width=0.4\textwidth]{figures/unsw}
+        \includegraphics[width=0.25\textwidth]{figures/unsw}
 
         \vspace{1cm}
 
         \large    
         Taste of Research 2021
+
+        Supervisor: Prof. Steven Sherwood
 
         \vspace{1cm}
             
@@ -71,10 +75,6 @@
         Faculty of Science\\
         University of New South Wales\\
         Sydney, Australia\\
-        \vspace{0.5cm}
-        Term 3 2021
-        \vfil
-            
     \end{center}
 \end{titlepage}
 
@@ -90,93 +90,166 @@ Abstract
 	\textbf{Acknowledgements}
 \end{center}
 
-Acknowledgements
+The author is most grateful to his supervisor, Prof. Steven Sherwood, for
+his patient guidance and mentorship during the ten-week research project
+whose outcomes are documented in this report. The author also thanks
+the members of Prof. Sherwood's research group at the UNSW Climate
+Change Research Centre for some useful suggestions and feedback.
+
+The author would also like to thank the UNSW School of Physics for
+offering the Taste of Research program under which this project was
+conducted, and in particular the program coordinator, A. Prof. Sarah
+Martell. The program has proved to be a very valuable and enjoyable
+learning opportunity.
 
 \tableofcontents
 
 \clearpage
 \section{Introduction and theory}
+% OUTLINE
+% 	- Aim and motivation
+% 	- Introduction to parcel theory and inherent assumptions
 
 \section{Literature review}
+% OUTLINE
+% 	- Knupp/Cotton review paper, downdraft types
+% 	- Thayer-Calder thesis
+% 	- Market 2017 on DCAPE, DCIN correlation
 
 \section{Methods}
+% OUTLINE
+% 	- Additional assumptions
+% 	- Code structure
+% 	-
 
 \section{Results}
-\subsection{Entrainment reduces downdraft strength}
+% OUTLINE
+% 	Initial conditions (what initiates a downdraft)
+% 	- Vary amount of initial evaporation, with and without liquid water
+%
+% 	Environmental factors (what maintains a downdraft)
+% 	- Vary entrainment rate for fixed initial conditions and sounding
+% 	- Vary sounding RH for fixed entrainment rate and initial conditions
+% 		- DCAPE/DCIN correlation?
+
+\subsection{Downdraft initiation and initial conditions}%
+\label{section:results_initial_conditions}
 
 \begin{figure}[ht]
 	\centering
-	\includegraphics[width=0.8\linewidth]
-		{figures/20211026_experiments_sydney/entrainment_rate_vs_motion}
+	\includegraphics[width=0.4\linewidth]%
+		{figures/20211110_varying_entrainment_figures/skewt.eps}
 	\caption{
-		Height and velocity over time of a parcels, initial height
-		$\SI{5}{\kilo\meter}$, that are initially cooled by evaporation to
-		the point of saturation. We use sounding data from Sydney
-		for the environmental temperature and dew point profiles.}
-	\label{sydney_entrainment_rate_vs_motion}
+		Skew $T$-$\log p$ plot of the idealised atmospheric sounding used in
+		Section \ref{section:results_initial_conditions}.}
+	\label{fig:initial_conditions_skewt}
 \end{figure}
 
 \begin{figure}[ht]
 	\centering
-	\includegraphics[width=0.8\linewidth]
-		{figures/20211027_experiments_singapore/entrainment_rate_vs_motion}
+	\includegraphics[width=0.9\linewidth]%
+		{figures/20211110_varying_initial_conditions_figures/%
+		motion_vs_initial_conditions_50RH_1perkm.eps}
 	\caption{
-		The results of the same calculation used for Figure
-		\ref{sydney_entrainment_rate_vs_motion}, but using sounding data
-		from Singapore for the environmental temperature and dew point
-		profiles.}
-	\label{singapore_entrainment_rate_vs_motion}
+		Properties of a downdraft parcel originating at height
+		$\SI{5}{\kilo\meter}$ in an idealised atmospheric sounding with
+		50\% relative humidity in the upper atmosphere and a fixed
+		entrainment rate of $\SI{1}{\per\kilo\meter}$. Top row:
+		height (left) and velocity (right) as functions of time, for
+		selected initial conditions. Bottom row: minimum height reached
+		(left) and maximum downward velocity (right) as functions of
+		the total amount of water initially added to the parcel
+		(specific humidity change due to evaporation $\Delta q$ plus
+		additional liquid water per unit parcel mass $\Delta l$).
+	}
+	\label{fig:initial_conditions_motion}
+\end{figure}
+
+
+\subsection{The impact of entrainment}
+
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=0.9\linewidth]%
+		{figures/20211110_varying_entrainment_figures/%
+		motion_vs_entr_rate_2gram_50RH.eps}
+	\caption{
+		Properties of a downdraft parcel originating at height
+		$\SI{5}{\kilo\meter}$ in an idealised atmospheric sounding with
+		50\% relative humidity in the upper atmosphere. The initial
+		conditions are fixed: an environmental parcel is brought to
+		saturation by evaporation of liquid water, and
+		$\SI{2}{\gram \per\kilo\gram}$ liquid water is additionally
+		suspended in the parcel.
+		Top row: height and velocity over time for selected entrainment
+		rates.
+		Bottom row: minimum height reached and maximum velocity as
+		functions of entrainment rate.
+	}
+	\label{fig:entrainment_motion}
+\end{figure}
+
+
+
+\subsection{The impact of environmental humidity}%
+\label{section:results_humidity}
+
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=0.5\linewidth]%
+		{figures/20211110_varying_env_humidity_figures/skewt.eps}
+	\caption{
+		Skew $T$-$\log p$ plot of some selected idealised atmospheric
+		soundings used in Section \ref{section:results_humidity}.
+		The dashed lines on the left are the dewpoint profiles for
+		the different soundings, and the solid blue line on the right
+		is the common temperature profile.
+	}
+	\label{fig:env_humidity_skew1}
 \end{figure}
 
 \begin{figure}[ht]
 	\centering
-	\includegraphics[width=0.8\linewidth]
-		{figures/20211026_experiments_sydney/entrainment_rate_vs_velocity}
+	\includegraphics[width=0.9\linewidth]%
+		{figures/20211110_varying_env_humidity_figures/%
+		motion_vs_RH_2gram_1perkm.eps}
 	\caption{
-		Maximum and height-averaged downdraft velocities from Figure
-		\ref{sydney_entrainment_rate_vs_motion}, (using Sydney sounding
-		data).}
-	\label{sydney_entrainment_rate_vs_velocity}
+		Properties of a downdraft parcel originating at height
+		$\SI{5}{\kilo\meter}$ in idealised atmospheric soundings whose
+		upper atmosphere relative humidities vary between 30\% and 90\%.
+		The initial conditions are generated by bringing an environmental
+		parcel to saturation by evaporation of liquid water (note that
+		the resulting temperatures differ since more humid environmental
+		parcels are closer to their wet bulb temperatures), and
+		$\SI{2}{\gram \per\kilo\gram}$ liquid water is additionally
+		suspended in the parcel.
+		Top row: height and velocity of the parcel over time for
+		selected soundings.
+		Bottom row: minimum height reached and maximum downward
+		velocity as functions of relative humidity in the upper
+		atmosphere.
+	}
+	\label{fig:env_humidity_motion}
 \end{figure}
 
 \begin{figure}[ht]
 	\centering
-	\includegraphics[width=0.8\linewidth]
-		{figures/20211027_experiments_singapore/entrainment_rate_vs_velocity}
+	\includegraphics[width=0.95\linewidth]%
+		{figures/20211110_varying_env_humidity_figures/%
+		strength_vs_dcape_dcin_2gram_1perkm.pdf}
 	\caption{
-		Maximum and height-averaged downdraft velocities from Figure
-		\ref{singapore_entrainment_rate_vs_motion}, (using Singapore sounding
-		data).}
-	\label{singapore_entrainment_rate_vs_velocity}
+		Plots of the minimum height (top row) and maximum downward
+		velocity (bottom row) reached by the parcel of Figure
+		\ref{fig:env_humidity_motion} as functions of the
+		downdraft convective available potential energy ($\dcape$,
+		left column), downdraft convective inhibition ($\dcin$,
+		centre column) and the ratio $|\dcin/\dcape|$ (right column).
+	}
+	\label{fig:env_humidity_dcape_dcin}
 \end{figure}
 
 
-\clearpage
-\subsection{Initial addition of water increases downdraft strength}
-
-\begin{figure}[ht]
-	\centering
-	\includegraphics[width=0.8\linewidth]
-		{figures/20211026_experiments_sydney/initial_conditions_vs_velocity}
-	\caption{
-		Maximum and height-averaged downdraft velocities computed as
-		functions of the amount of water initially added. Dashed lines
-		indicate that enough water is initially evaporated to saturate
-		the parcel; the rest remains in the parcel as liquid and can
-		evaporate during descent. The entrainment rate is fixed at
-		$\SI{1}{\per\kilo\meter}$ and we use the Sydney sounding data.}
-	\label{sydney_initial_conditions_vs_velocity}
-\end{figure}
-
-\begin{figure}[ht]
-	\centering
-	\includegraphics[width=0.8\linewidth]
-		{figures/20211027_experiments_singapore/initial_conditions_vs_velocity}
-	\caption{
-		The result shown in Figure \ref{sydney_initial_conditions_vs_velocity},
-		now using the Singapore sounding data.}
-	\label{singapore_initial_conditions_vs_velocity}
-\end{figure}
+\section{Conclusions}
 
 % \clearpage
 % \printbibliography
