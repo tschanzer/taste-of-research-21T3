@@ -7,9 +7,11 @@ import numpy as np
 import metpy.calc as mpcalc
 from metpy.units import units
 from metpy.units import concatenate
+import metpy.constants as const
 
 from scipy.interpolate import interp1d
 from scipy.optimize import root_scalar
+from scipy.integrate import solve_ivp
 
 from thermo import theta_e, wetbulb, temperature_change
 from thermo import saturation_specific_humidity
@@ -220,3 +222,87 @@ class Environment:
         mixing_ratio = mpcalc.mixing_ratio_from_specific_humidity(
             self.specific_humidity(height))
         return mpcalc.density(pressure, temperature, mixing_ratio)
+    
+    
+def idealised_sounding(relative_humidity, info='', name=''):
+    """
+    Creates an idealised sounding.
+    
+    Args:
+        relative_humidity: Relative humidity above the boundary layer.
+        info: Information to store with the sounding, e.g. date
+            (optional)
+        name: Short name for the sounding, e.g. 'Sydney' (optional).
+        
+    Returns:
+        An Environment instance.
+    """
+    
+    # generature temperature profile
+    pressure = np.arange(1013.25, 200, -5)*units.mbar
+    t_boundary_layer = mpcalc.dry_lapse(
+        np.arange(1013.25, 1013.25 - 161, -5)*units.mbar, 20*units.celsius)
+    t_capping = t_boundary_layer[-1] + [1.5, 3.0]*units.delta_degC
+    t_remaining = mpcalc.moist_lapse(
+        np.arange(1013.25 - 175, 200, -5)*units.mbar, t_capping[-1],
+        reference_pressure=(1013.25 - 170)*units.mbar)
+    temperature = concatenate([
+        t_boundary_layer, t_capping, t_remaining,
+    ])
+
+    # generate dew point profile
+    q_boundary_layer = mpcalc.specific_humidity_from_mixing_ratio(
+        6e-3*units.dimensionless)
+    dewpoint_boundary_layer = mpcalc.dewpoint_from_specific_humidity(
+        np.arange(1013.25, 1013.25 - 161, -5)*units.mbar, t_boundary_layer,
+        np.ones(t_boundary_layer.size)*q_boundary_layer)
+    dewpoint_remaining = mpcalc.dewpoint_from_relative_humidity(
+        t_remaining, np.ones(t_remaining.size)*relative_humidity)
+    dewpoint_capping_top = mpcalc.dewpoint_from_relative_humidity(
+        t_capping[-1], relative_humidity)
+    dewpoint_capping = concatenate([
+        (dewpoint_boundary_layer[-1].to(units.kelvin)
+         + dewpoint_capping_top.to(units.kelvin))/2,
+        dewpoint_capping_top,
+    ])
+    dewpoint = concatenate([
+        dewpoint_boundary_layer, dewpoint_capping, dewpoint_remaining,
+    ])
+    
+    temperature_interp = interp1d(
+        pressure.m_as(units.pascal), temperature.m_as(units.kelvin),
+        fill_value='extrapolate')
+    dewpoint_interp = interp1d(
+        pressure.m_as(units.pascal), dewpoint.m_as(units.kelvin),
+        fill_value='extrapolate')
+    
+    def dzdp(pressure, height):
+        """
+        Calculates the rate of height change w.r.t. pressure, dz/dp.
+        Args:
+            pressure: The pressure at the point of interest, in Pa.
+            height: The height of the point of interest, in m.
+        Returns:
+            The derivative dz/dp in m/Pa.
+        """
+
+        pressure = pressure*units.pascal
+        temperature = temperature_interp(pressure.m)*units.kelvin
+        dewpoint = dewpoint_interp(pressure.m)*units.kelvin
+
+        specific_humidity = mpcalc.specific_humidity_from_dewpoint(
+            pressure, dewpoint)
+        mixing_ratio = mpcalc.mixing_ratio_from_specific_humidity(
+            specific_humidity)
+        density = mpcalc.density(pressure, temperature, mixing_ratio)
+        dzdp = - 1 / (density.to(units.kg/units.meter**3).m * const.g)
+
+        return dzdp
+
+    height = solve_ivp(
+        dzdp, (1013.25e2, np.min(pressure.m_as(units.pascal))),
+        [0], t_eval=pressure.m_as(units.pascal)).y*units.meter
+    
+    return Environment(
+        pressure, np.squeeze(height), temperature, dewpoint, info=info,
+        name=name)
