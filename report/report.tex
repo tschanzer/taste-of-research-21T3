@@ -105,6 +105,11 @@ conducted, and in particular the program coordinator, A. Prof. Sarah
 Martell. The program has proved to be a very valuable and enjoyable
 learning opportunity.
 
+\begin{center}
+	\large
+	\textbf{Notation for thermodynamic variables}
+\end{center}
+
 \tableofcontents
 
 \clearpage
@@ -113,12 +118,39 @@ learning opportunity.
 % 	- Aim and motivation
 % 		- What initiates and maintains/inhibits a downdraft?
 % 	- Introduction to parcel theory and inherent assumptions
+Outline:
+\begin{itemize}
+	\item Aim and key questions: what processes and conditions initiate
+		and maintain/inhibit a downdraft?
+	\item Motivation: improving the parametrisation of convection
+		in global climate models and understanding of severe weather
+		associated with downdrafts
+	\item Overview of parcel theory and its assumptions (buoyant forces
+		only, adiabatic processes, hydrostatically balanced
+		environment, etc.)
+\end{itemize}
 
 \section{Literature review}
 % OUTLINE
 % 	- Knupp/Cotton review paper, downdraft types
 % 	- Thayer-Calder thesis
 % 	- Market 2017 on DCAPE, DCIN correlation
+Possible items for discussion:
+\begin{itemize}
+	\item \textcite{knupp_cotton_1985}: the downdraft types and their
+		typical characteristics
+	\item \textcite{thayer-calder_2013}: last chapter on the Lagrangian
+		view of downdrafts
+	\item \textcite{market_2017}: correlation between DCAPE and DCIN and
+		downdraft strength
+	\item \textcite{sumrall_2020}: DCAPE, DCIN and severe surface winds
+	\item \textcite{davies-jones_2008}: pseudoadiabatic wet bulb
+		temperature approximations
+	\item \textcite{bolton_1980}: equivalent potential temperature
+		and saturation vapour pressure approximations
+	\item \textcite{saunders_1957}: reversible moist adiabatic
+		temperature approximation
+\end{itemize}
 
 \section{Methods}
 % OUTLINE
@@ -127,6 +159,11 @@ learning opportunity.
 % 	- Flowchart of steps involved in motion calculation
 
 \subsection{General approach and code structure}
+Mention general capabilities of the code
+
+\subsection{%
+	Temperature as a function of pressure along a reversible moist adiabat}
+
 
 \subsection{Temperature of an entraining, descending parcel}
 \subsubsection*{Mixing and phase equilibration}
@@ -171,6 +208,11 @@ learning opportunity.
 	}
 	\label{fig:profile_flowchart}
 \end{figure}
+
+
+\clearpage
+\subsection{Density, buoyancy and motion of a descending parcel}
+
 
 \clearpage
 \section{Results}
@@ -304,7 +346,7 @@ learning opportunity.
 \clearpage
 \section{Conclusions}
 
-% \clearpage
-% \printbibliography
+\clearpage
+\printbibliography
 
 \end{document}
