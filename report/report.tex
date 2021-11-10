@@ -15,10 +15,13 @@
 	amssymb,
 	graphicx,
 	siunitx,
+	standalone,
+	tikz,
+	cprotect,
 }
 
 
-% \addbibresource{references.bib}
+\addbibresource{references.bib}
 
 \setlength{\parskip}{1em}
 \pagestyle{fancy}
@@ -108,6 +111,7 @@ learning opportunity.
 \section{Introduction and theory}
 % OUTLINE
 % 	- Aim and motivation
+% 		- What initiates and maintains/inhibits a downdraft?
 % 	- Introduction to parcel theory and inherent assumptions
 
 \section{Literature review}
@@ -120,8 +124,55 @@ learning opportunity.
 % OUTLINE
 % 	- Additional assumptions
 % 	- Code structure
-% 	-
+% 	- Flowchart of steps involved in motion calculation
 
+\subsection{General approach and code structure}
+
+\subsection{Temperature of an entraining, descending parcel}
+\subsubsection*{Mixing and phase equilibration}
+
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=0.9\linewidth]%
+		{figures/mix_equilibrate_flowchart.pdf}
+	\cprotect\caption{%
+		Flowchart for the mixing and phase equilibration calculation
+		(functions $\verb|mix|$ and $\verb|equilibrate|$)
+		performed at each downward step for the entraining downdraft.
+	}
+	\label{fig:mix_equilibrate_flowchart}
+\end{figure}
+
+\subsubsection*{Dry and/or reversible moist adiabatic descent}
+
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=0.75\linewidth]%
+		{figures/descend_flowchart.pdf}
+	\cprotect\caption{%
+		Flowchart for the descent calculation ($\verb|descend|$)
+		performed at each downward step for the entraining downdraft.
+	}
+	\label{fig:descend_flowchart}
+\end{figure}
+
+\subsubsection*{Finding temperature as a function of height}
+
+\begin{figure}[ht]
+	\centering
+	\includegraphics[width=0.6\linewidth]%
+		{figures/profile_flowchart.pdf}
+	\cprotect\caption{%
+		Flowchart for the calculation of parcel temperature as a
+		function of height ($\verb|EntrainingParcel.profile|$),
+		assembling the routines
+		shown in Figures \ref{fig:mix_equilibrate_flowchart} and
+		\ref{fig:descend_flowchart}.
+	}
+	\label{fig:profile_flowchart}
+\end{figure}
+
+\clearpage
 \section{Results}
 % OUTLINE
 % 	Initial conditions (what initiates a downdraft)
@@ -166,6 +217,7 @@ learning opportunity.
 \end{figure}
 
 
+\clearpage
 \subsection{The impact of entrainment}
 
 \begin{figure}[ht]
@@ -190,7 +242,7 @@ learning opportunity.
 \end{figure}
 
 
-
+\clearpage
 \subsection{The impact of environmental humidity}%
 \label{section:results_humidity}
 
@@ -249,6 +301,7 @@ learning opportunity.
 \end{figure}
 
 
+\clearpage
 \section{Conclusions}
 
 % \clearpage
