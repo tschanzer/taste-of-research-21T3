@@ -9,6 +9,7 @@ import metpy.constants as const
 from metpy.units import units
 from metpy.units import concatenate
 
+from scipy.special import lambertw
 from scipy.optimize import minimize_scalar, root_scalar
 from scipy.integrate import simps
 
@@ -41,10 +42,15 @@ def moist_lapse(
         reference_pressure = pressure[0]
     if method == 'integration':
         if pressure.size == 1:
-            temperature = mpcalc.moist_lapse(
-                pressure, initial_temperature,
-                reference_pressure=reference_pressure)
-            return np.atleast_1d(temperature)[0]
+            try:
+                temperature = mpcalc.moist_lapse(
+                    pressure, initial_temperature,
+                    reference_pressure=reference_pressure)
+                return np.atleast_1d(temperature)[0]
+            except:
+                return mpcalc.moist_lapse(
+                    pressure.item(), initial_temperature.item(),
+                    reference_pressure=reference_pressure.item())
         else:
             pressure = pressure[1:]
             temperature = mpcalc.moist_lapse(
