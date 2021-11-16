@@ -201,6 +201,80 @@ def dcape_dcin(sounding, samples=10000):
     return dcape, dcin
 
 
+def lcl_romps(p, T, q):
+    """
+    Analytic solution for the LCL (adapted from Romps 2017).
+    
+    This code is adapted from Romps (2017):
+    https://romps.berkeley.edu/papers/pubdata/2016/lcl/lcl.py
+    
+    Args:
+        p: Pressure.
+        T: Temperature.
+        q: Specific humidity.
+        
+    Returns:
+        (pressure, temperature) at the LCL.
+    """
+    
+    # unit conversions
+    rhl = mpcalc.relative_humidity_from_specific_humidity(p, T, q).m
+    p = p.m_as(units.pascal)
+    T = T.m_as(units.kelvin)
+    
+    # Parameters
+    Ttrip = 273.16     # K
+    ptrip = 611.65     # Pa
+    E0v   = 2.3740e6   # J/kg
+    ggr   = 9.81       # m/s^2
+    rgasa = 287.04     # J/kg/K 
+    rgasv = 461        # J/kg/K 
+    cva   = 719        # J/kg/K
+    cvv   = 1418       # J/kg/K 
+    cvl   = 4119       # J/kg/K 
+    cvs   = 1861       # J/kg/K 
+    cpa   = cva + rgasa
+    cpv   = cvv + rgasv
+
+    # The saturation vapor pressure over liquid water
+    def pvstarl(T):
+        return (ptrip * (T/Ttrip)**((cpv-cvl)/rgasv)
+            * np.exp((E0v - (cvv-cvl)*Ttrip) / rgasv * (1/Ttrip - 1/T)))
+   
+    # Calculate pv from rh, rhl, or rhs
+    pv = rhl * pvstarl(T)
+
+    # Calculate lcl_liquid and lcl_solid
+    qv = rgasa*pv / (rgasv*p + (rgasa-rgasv)*pv)
+    rgasm = (1-qv)*rgasa + qv*rgasv
+    cpm = (1-qv)*cpa + qv*cpv
+    aL = -(cpv-cvl)/rgasv + cpm/rgasm
+    bL = -(E0v-(cvv-cvl)*Ttrip)/(rgasv*T)
+    cL = rhl*np.exp(bL)
+    T_lcl = bL/(aL*lambertw(bL/aL*cL**(1/aL),-1).real)*T
+    p_lcl = p*(T_lcl/T)**(cpm/rgasm)
+
+    return p_lcl/1e2*units.mbar, T_lcl*units.kelvin
+
+
+def wetbulb_romps(pressure, temperature, specific_humidity):
+    """
+    Calculates wet bulb temperature using Normand's rule and Romps (2017).
+    
+    Args:
+        p: Pressure.
+        T: Temperature.
+        q: Specific humidity.
+        
+    Returns:
+        Wet bulb temperature.
+    """
+    
+    lcl_pressure, lcl_temperature = lcl_romps(
+        pressure, temperature, specific_humidity)
+    return moist_lapse(pressure, lcl_temperature, lcl_pressure)
+
+
 # ---------- Calculations from Davies-Jones 2008 ----------
 
 def theta_w(theta_e):
@@ -706,8 +780,9 @@ def equilibrate(
 
     if q_mixed > q_mixed_saturated:
         # we need to condense water vapour
-        ept = theta_e(pressure, t_mixed, q_mixed)
-        t_final = wetbulb(pressure, ept, improve=True)
+        # ept = theta_e(pressure, t_mixed, q_mixed)
+        # t_final = wetbulb(pressure, ept, improve=True)
+        t_final = wetbulb_romps(pressure, t_mixed, q_mixed)
         q_final = saturation_specific_humidity(pressure, t_final)
         l_final = l_mixed + q_mixed - q_final
         return (t_final, q_final, l_final)
@@ -721,8 +796,9 @@ def equilibrate(
         if q_mixed + l_mixed <= q_all_evap_saturated:
             return (t_all_evap, q_mixed + l_mixed, 0*units.dimensionless)
         else:
-            ept = theta_e(pressure, t_mixed, q_mixed)
-            t_final = wetbulb(pressure, ept, improve=True)
+            # ept = theta_e(pressure, t_mixed, q_mixed)
+            # t_final = wetbulb(pressure, ept, improve=True)
+            t_final = wetbulb_romps(pressure, t_mixed, q_mixed)
             q_final = saturation_specific_humidity(pressure, t_final)
             l_final = l_mixed + q_mixed - q_final
             return (t_final, q_final, l_final)
