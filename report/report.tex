@@ -18,12 +18,14 @@
 	standalone,
 	tikz,
 	cprotect,
+	enumitem,
+	hyperref,
 }
 
 
 \addbibresource{references.bib}
 
-\setlength{\parskip}{1em}
+\setlength{\parskip}{2mm}
 \pagestyle{fancy}
 \fancyhf{}
 \rhead{Thomas Schanzer}
@@ -45,8 +47,7 @@
 
 \begin{document}
 
-% \includepdf[pages=-]{coversheet.pdf}
-
+\hypersetup{pageanchor=false}
 \begin{titlepage}
     \begin{center}
         ~
@@ -54,7 +55,8 @@
         \vspace{3cm}
         \Huge
         \textbf{%
-        	A Simple Parcel Theory Model of Downdrafts in Convective Clouds}
+        	A Simple Parcel Theory Model of Downdrafts in Atmospheric
+        	Convection}
         
         \vspace{0.75cm}
         \Large
@@ -81,18 +83,18 @@
     \end{center}
 \end{titlepage}
 
+\hypersetup{pageanchor=true}
+\addtocounter{page}{1}
 \begin{center}
 	\large
 	\textbf{Abstract}
 \end{center}
-
 Abstract
 
 \begin{center}
 	\large
 	\textbf{Acknowledgements}
 \end{center}
-
 The author is most grateful to his supervisor, Prof. Steven Sherwood, for
 his patient guidance and mentorship during the ten-week research project
 whose outcomes are documented in this report. The author also thanks
@@ -107,28 +109,123 @@ learning opportunity.
 
 \begin{center}
 	\large
-	\textbf{Notation for thermodynamic variables}
+	\textbf{Data availability statement}
 \end{center}
+All Python scripts and notebooks used to produce the results in this
+report are publicly available at
+\url{https://github.com/tschanzer/taste-of-research-21T3}.
+
+\begin{center}
+	\large
+	\textbf{Notation for thermodynamic variables and constants}
+\end{center}
+\begin{description}[align=right,labelwidth=2cm,itemsep=0mm]
+	\item[$p$] Total pressure
+	\item[$z$] Height
+	\item[$T$] Absolute temperature
+	\item[$T_W$] Wet bulb temperature
+	\item[$\rho$] Density
+	\item[$q$] Specific humidity
+	\item[$q^*(p,T)$] Saturation specific humidity
+	\item[$\mathrm{RH}$] Relative humidity
+	\item[$\theta_e(p,T,q)$] Equivalent potential temperature
+	\item[$l$] Ratio of liquid water mass to total
+	\item[$L_v$] Latent heat of vapourisation of water
+	\item[$c_p$] Specfic heat at constant pressure of dry air
+	\item[R] Specific gas constant of dry air
+	\item[$g$] Acceleration due to gravity
+	\item[$(\cdot)_E$] Environmental quantity
+	\item[$(\cdot)_P$] Parcel quantity
+\end{description}
 
 \tableofcontents
 
 \clearpage
 \section{Introduction and theory}
-% OUTLINE
-% 	- Aim and motivation
-% 		- What initiates and maintains/inhibits a downdraft?
-% 	- Introduction to parcel theory and inherent assumptions
-Outline:
-\begin{itemize}
-	\item Aim and key questions: what processes and conditions initiate
-		and maintain/inhibit a downdraft?
-	\item Motivation: improving the parametrisation of convection
-		in global climate models and understanding of severe weather
-		associated with downdrafts
-	\item Overview of parcel theory and its assumptions (buoyant forces
-		only, adiabatic processes, hydrostatically balanced
-		environment, etc.)
-\end{itemize}
+Along with updrafts, downdrafts---downward-moving masses of air---are
+important features in the dynamics of the Earth's atmosphere;
+they transport mass, momentum, heat and moisture vertically
+and also generate and maintain storms \parencite{knupp_cotton_1985}.
+
+Indeed, one of the main objectives of present-day research into
+downdraft dynamics is to improve the predictions of global climate
+models \parencite{thayer-calder_2013}, whose output informs the
+understanding of the larger-scale
+dynamics, including the pressing issue of anthropogenic climate
+change. Specifically, the high computational cost of running a global
+climate model over the necessarily large spatial domain and prediction
+timescales constrains their maximum resolution, which is still too
+coarse to describe convection. The models therefore employ schemes
+known as \emph{parametrisations} which estimate the effect of
+convection on the state of the model using the information available
+at each time step; an accurate estimation requires a strong
+understanding of the factors that govern convection.
+
+On a smaller scale, strong downdrafts that reach the Earth's surface
+(\emph{downbursts}) are known to cause significant damage to
+man-made structures and create hazardous, or even deadly, conditions
+for aircraft \parencite{thayer-calder_2013}. Another aim of downdraft
+research is therefore to understand the mechanisms that generate
+such extreme events and improve the ability to predict them in advance.
+
+Considering these motivations, the goal of this work is to gain
+insight into which processes and conditions initiate, and which
+maintain or inhibit, downdrafts. The approach will be to construct
+a significantly simplified model of a downdraft using \emph{parcel
+theory}.
+
+An air parcel is a mass of air with an imaginary flexible (but usually
+closed) boundary; under the usual assumptions, its exact size and
+shape are irrelevant. The only force assumed to act on the parcel is
+the net buoyant force (per unit mass), given in accordance with
+Archimedes' principle by
+\begin{equation}
+	b = \frac{\rho_E - \rho_P}{\rho_P} g.
+	\label{eqn:buoyancy}
+\end{equation}
+If the parcel is lowered in the atmosphere to a location with a higher
+pressure, the work done to compress it and any heat exchanged will
+manifest as a change in its internal energy in accordance with the
+first law of thermodynamics. The second key assumption of parcel theory
+is that this process is adiabatic; this is valid due to the low
+thermal conductivity of air.
+
+The potential presence of water in gas, liquid and solid phases in the
+parcel is a major complication; under the assumption that the parcel
+remains in phase equilibrium (i.e., changes are slow enough for
+excess liquid to evaporate if the vapour pressure is below the
+saturation value), there are two modes of adiabatic descent the parcel
+may undergo. If no liquid is present, the descent is \emph{dry
+adiabatic} and the rate of work on the parcel causes it to warm at
+an approximate rate of $\SI{9.8}{\kelvin \per\kilo\meter}$.
+If liquid is present, the descent is \emph{moist adiabatic}:
+progressive warming of the parcel raises its saturation vapour pressure,
+allowing the liquid to progressively evaporate during descent,
+with the necessary transfer of latent heat from the air to the water
+creating an opposing cooling effect.
+
+If the pressure and temperature of the parcel are thus known at any
+point in its descent, its density may be calculated using the ideal
+gas law,
+\begin{equation}
+	\rho = \frac{p}{RT_v},
+\end{equation}
+where $T_v$ is the \emph{virtual temperature} that contains a small
+correction to account for the different density of water vapour.
+If an mass $l$ of liquid water, per unit total parcel mass, is also
+present, it is easily shown that (assuming the liquid occupies
+negligible volume) the corrected parcel density is
+\begin{equation}
+	\rho = \frac{p}{RT_v (1 - l)}.
+\end{equation}
+Knowledge of the parcel and environmental densities enable calculation
+of the buoyant force per unit mass on the parcel using
+(\ref{eqn:buoyancy}), and its resulting displacement and velocity may be
+obtained by (numerically) solving the ODE
+\begin{equation}
+	\frac{\mathrm{d}^2 z}{\mathrm{d}t^2} = b(z).
+\end{equation}
+
 
 \section{Literature review}
 % OUTLINE
@@ -151,6 +248,27 @@ Possible items for discussion:
 	\item \textcite{saunders_1957}: reversible moist adiabatic
 		temperature approximation
 \end{itemize}
+
+\subsection{Downdraft dynamics}
+\textcite{knupp_cotton_1985} identify four downdraft types, which
+informed the methods of this investigation: penetrative, cloud-edge,
+overshooting and precipitation-associated.
+The penetrative type arises when subsaturated environmental air
+is \emph{entrained} (mixed) into saturated cloudy air, allowing
+evaporation of the excess liquid that creates negative buoyancy.
+The cloud-edge type, they note, is less understood and may result
+from evaporative cooling at the edges of clouds.
+An overshooting downdraft may be generated when the inertia of
+an updraft causes it to rise beyond its level of neutral buoyancy
+and subsequently sink.
+The precipitation-associated downdraft is generated by the evaporation
+of precipitation into subsaturated air beneath a cloud, with the cooling
+creating negative buoyancy. The model presented in this work most
+closely describes the precipitation-assiciated and penetrative types.
+
+
+\subsection{Thermodynamic calculations}
+
 
 \section{Methods}
 % OUTLINE

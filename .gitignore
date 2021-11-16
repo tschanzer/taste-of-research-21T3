@@ -14,3 +14,4 @@ analysis/.DS_Store
 *.gz
 *.toc
 *.cpt
+*.out
