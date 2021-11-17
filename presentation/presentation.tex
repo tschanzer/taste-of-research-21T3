@@ -1,0 +1,152 @@
+\documentclass[handout]{beamer}
+
+\usepackage{hyperref}
+\usepackage{soul}
+\usepackage{minted}
+\usepackage{xcolor}
+\definecolor{LightGray}{gray}{0.9}
+\setbeamercovered{transparent}
+\graphicspath{{figures}}
+
+\title{A Simple Parcel Theory Model of Downdrafts in Atmospheric Convection}
+\author{
+    Thomas Schanzer
+    \texorpdfstring{\\}{}
+    \small \texorpdfstring{
+        \url{https://github.com/tschanzer/taste-of-research-21T3}}{
+        https://github.com/tschanzer/taste-of-research-21T3
+    }
+    \texorpdfstring{\\ \vspace{5mm}}{}
+    Supervisor: Prof. Steven Sherwood}
+\institute{UNSW School of Physics}
+\date{Monday 22 November 2021}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\begin{frame}
+    \frametitle{Aim and Motivation}
+    Downdrafts play an important role in the dynamics of the Earth's
+    atmosphere and climate.
+    \begin{block}{Question}
+        Which processes and conditions initiate, and which
+        maintain or inhibit, downdrafts?
+    \end{block}
+    \begin{block}{Motivation}
+        \begin{itemize}
+            \item Convection parametrisation in global climate models
+            \item Forcasting dangerous downbursts
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\begin{frame}
+    \frametitle{Literature}
+    \emph{Knupp and Cotton (1985)}
+    \footnote{ \tiny
+        Knupp, KR \& Cotton, WR 1985, ‘Convective cloud downdraft
+        structure: An interpretive survey’, Reviews of geophysics (1985),
+        vol. 23, no. 2, pp. 183–215.}
+    identify four downdraft types from a review of observational and
+    modelling research:
+    \begin{itemize}
+        \item<1,5> Precipitation-associated, \pause
+        \item<2,6> Penetrative, \pause
+        \item<3> Cloud-edge, \pause
+        \item<4> Overshooting. \pause
+    \end{itemize}
+    \emph{In this work:} precipitation-associated and penetrative
+    downdrafts.
+\end{frame}
+
+\begin{frame}
+    \frametitle{Background: Parcel Theory}
+    \textbf{Parcel:} small air mass with an imaginary, flexible but closed
+    boundary.
+
+    \textbf{Key assumptions:}
+    \begin{itemize}
+        \item Motion is purely vertical and buoyancy is the only force
+            involved: \[b = \frac{\rho_E - \rho_P}{\rho_P} g.\]
+        \item Raising and lowering the parcel is a reversible adiabatic
+            process
+    \end{itemize}
+
+    \textbf{Major complication:} the atmosphere contains water!
+    \begin{itemize}
+        \item Descent is either \emph{dry} adiabatic (no phase changes) or
+            \emph{moist} adiabatic (with phase changes)
+        \item Phase equilibrium is maintained
+        \item Air/vapour mixture is an ideal gas
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]
+    \frametitle{Methods}
+    Original model developed from first principles in Python.
+    \begin{itemize}
+        \item The \verb|Environment| class interpolates real atmospheric
+            temperature and moisture profiles to calculate derived quantities:
+\vspace{-3mm}
+\begin{minted}[bgcolor=LightGray, fontsize=\footnotesize]{python}
+>>> sydney.density(5*units.km)
+0.7206758681891053 kilogram/meter^3
+\end{minted}
+\vspace{-7mm}
+        \item Various thermodynamic calculations (approximate and
+            exact) are implemented from literature
+        \item End goal: calculate parcel temperature $\to$ density $\to$
+            buoyancy as functions of height and numerically solve
+            \[\frac{d^2 z}{dt^2} = b(z).\]
+    \end{itemize}
+\end{frame}
+
+\begin{frame}
+    \frametitle{Results: Precipitation Enhances Downdrafts}
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=0.9\linewidth]%
+            {figures/motion_vs_initial_conditions_50RH_1perkm.eps}
+    \end{figure}
+\end{frame}
+
+\begin{frame}
+    \frametitle{Results: Entrainment Inhibits Downdrafts}
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=0.9\linewidth]%
+            {figures/motion_vs_entr_rate_2gram_50RH.eps}
+    \end{figure}
+\end{frame}
+
+\begin{frame}
+    \frametitle{Results: Atmospheric Dryness Enhances Downdrafts}
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=0.9\linewidth]%
+            {figures/motion_vs_RH_2gram_1perkm-eps-converted-to.pdf}
+    \end{figure}
+\end{frame}
+
+\begin{frame}
+    \frametitle{Conclusions and Future Work}
+    \textbf{Conclusions:}
+    \begin{itemize}
+        \item Precipitation evaporation increases strength and penetration
+        \item Entrainment reduces them
+        \item Atmospheric dryness increases them
+    \end{itemize}
+
+    \textbf{Application:} supplement basic sounding analysis methods used
+    in weather forecasting
+
+    \textbf{Future Work:}
+    \begin{itemize}
+        \item Consider other forces at play, e.g. drag
+        \item Model more advanced dynamics, e.g. entrainment from
+            updrafts
+    \end{itemize}
+\end{frame}
+
+\end{document}

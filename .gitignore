@@ -15,3 +15,8 @@ analysis/.DS_Store
 *.toc
 *.cpt
 *.out
+*.pygtex
+*.pygstyle
+*.nav
+*.snm
+*.vrb
