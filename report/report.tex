@@ -90,7 +90,19 @@
 	\large
 	\textbf{Abstract}
 \end{center}
-Abstract
+Downdrafts are known to play an important role in the dynamics of the
+Earth's atmosphere and climate, but current quantitative understanding
+of the mechanisms that generate, maintain and inhibit them is lacking.
+A simple original model, based on the parcel theory that considers
+only buoyant forces, is devised to investigate the factors that
+determine the speed with which a negatively buoyant air mass descends,
+and the distance it is able to penetrate in the atmosphere. It is found
+that the evaporation of precipitation is a strong initiating mechanism,
+that the entrainment of environmental air into a downdraft hinders
+its descent, and that dryness in the atmosphere above the boundary layer
+accelerates it, in agreement with the observations and
+more sophisticated models documented in existing literature.
+
 
 \begin{center}
 	\large
@@ -131,9 +143,10 @@ report are publicly available at
 	\item[$\mathrm{RH}$] Relative humidity
 	\item[$\theta_e(p,T,q)$] Equivalent potential temperature
 	\item[$l$] Ratio of liquid water mass to total
+	\item[$\lambda$] Entrainment rate
 	\item[$L_v$] Latent heat of vapourisation of water
 	\item[$c_p$] Specfic heat at constant pressure of dry air
-	\item[R] Specific gas constant of dry air
+	\item[$R$] Specific gas constant of dry air
 	\item[$g$] Acceleration due to gravity
 	\item[$(\cdot)_E$] Environmental quantity
 	\item[$(\cdot)_P$] Parcel quantity
@@ -237,6 +250,7 @@ of the buoyant force per unit mass on the parcel using
 obtained by (numerically) solving the ODE
 \begin{equation}
 	\frac{\mathrm{d}^2 z}{\mathrm{d}t^2} = b(z).
+	\label{eqn:ode}
 \end{equation}
 
 
@@ -317,7 +331,7 @@ This work also reproduces the above findings.
 % \subsection{Thermodynamic calculations}
 
 
-\section{Methods}
+\section{Methods} \label{section:methods}
 % OUTLINE
 % 	- Additional assumptions
 % 	- Code structure
@@ -385,7 +399,34 @@ the following subsections.
 
 
 \subsection{Temperature of an entraining, descending parcel}
+The theory of the model developed in this work is a generalisation
+of the standard parcel theory in that it accounts for a parcel that
+continually entrain air from its environment, exchanging heat
+and liquid and/or gaseous water. Following the generally accepted
+pattern common to the approaches documented by
+\textcite{knupp_cotton_1985}, the cumulative mass exchanged by
+entrainment is assumed to be a linear function of distance descended,
+with the constant of proportionality $\lambda$ termed the
+\emph{entrainment rate}. The dimension of $\lambda$ is inverse length;
+for a parcel of mass $m$, the total mass exchanged after it descends
+a distance $\Delta z$ is $m \lambda \Delta z$. One of the main
+contributions of this work is to develop a method for calculating
+the temperature of a parcel that simultaneously descends and entrains
+in this manner. The general approach is to divide the descent into
+small vertical steps, each one consisting of a discrete entrainment
+process and a short adiabatic descent.
+
+
 \subsubsection*{Mixing and phase equilibration}
+The first step towards finding the temperature of an entraining and
+descending parcel is to find the state that results from a discrete
+entrainment step, without descent. The procedure is depicted in
+Figure \ref{fig:mix_equilibrate_flowchart} and is based on the
+conservation of total enthalpy and water mass, and the requirement
+that the parcel return to phase equilibrium after its exchange with
+the environment (by either condensing or evaporating water). In the
+cases where evaporation or condensation is necessary, we recognise
+that the resulting temperature is the parcel's wet bulb temperature.
 
 \begin{figure}[ht]
 	\centering
@@ -399,7 +440,19 @@ the following subsections.
 	\label{fig:mix_equilibrate_flowchart}
 \end{figure}
 
+
 \subsubsection*{Dry and/or reversible moist adiabatic descent}
+After the parcel has mixed with the environment and returned to phase
+equilibrium, it descends adiabatically. The central complication in
+this step is that the descent may be dry (if no liquid water is
+present in the parcel), moist (if liquid water is present), or
+part moist followed by part dry (if the small amount of liquid water
+present fully evaporates midway during descent). If this third case
+is necessary, the final temperature may be computed by recognising
+that the parcel conserves its equivalent potential temperature,
+and therefore finding the unique final temperature that satisfies
+this requirement using numerical root-finding. Figure
+\ref{fig:descend_flowchart} shows all the steps involved.
 
 \begin{figure}[ht]
 	\centering
@@ -412,7 +465,15 @@ the following subsections.
 	\label{fig:descend_flowchart}
 \end{figure}
 
+
 \subsubsection*{Finding temperature as a function of height}
+The previous two procedures, performed one after the other, give
+the state of the parcel after a small discrete downward step. A
+calculation that is valid over larger distances must divide the
+vertical interval into small steps ($\SI{50}{\meter}$ was found
+to give sufficient convergence by trial and error) and repeat the
+discrete method at each one until the desired final height is reached.
+This process is depicted in Figure \ref{fig:profile_flowchart}.
 
 \begin{figure}[ht]
 	\centering
@@ -428,9 +489,17 @@ the following subsections.
 	\label{fig:profile_flowchart}
 \end{figure}
 
-
-\clearpage
 \subsection{Density, buoyancy and motion of a descending parcel}
+Now, knowing the temperature of the parcel as a function of
+height/pressure, it is a relatively simple matter to find its
+density using (\ref{eqn:density}) and the buoyant force per unit mass
+acting on it using (\ref{eqn:buoyancy}). We then numerically solve
+(\ref{eqn:ode}), expressed as the first-order system
+\begin{equation*}
+	\frac{\mathrm{d}}{\mathrm{d}t}
+	\begin{pmatrix} z \\ w\end{pmatrix}
+	= \begin{pmatrix} w \\ b(z) \end{pmatrix}.
+\end{equation*}
 
 
 \clearpage
@@ -444,8 +513,34 @@ the following subsections.
 % 	- Vary sounding RH for fixed entrainment rate and initial conditions
 % 		- DCAPE/DCIN correlation?
 
+The model developed in Section \ref{section:methods} allows for the
+variation of numerous parameters relevant to downdrafts. One may
+specify arbitrary initial conditions for height, temperature,
+specific humidity and liquid water mass ratio, choose the entrainment
+rate, and use any atmospheric sounding to generate the environmental
+variables.
+
 \subsection{Downdraft initiation and initial conditions}%
 \label{section:results_initial_conditions}
+
+We first envision a downdraft that is initiated by precipitation
+falling into subsaturated environmental air (the
+precipitation-associated type identified by \textcite{knupp_cotton_1985}),
+and investigate the effect of the amount of water evaporated (and the
+consequent cooling) on downdraft strength and penetration.
+
+An idealised atmospheric sounding is used, with a dry adiabatic
+temperature profile in a boundary layer near the surface, a capping
+\emph{inversion} (region of increasing temperature with height) above
+it, and a moist adiabatic temperature profile in the remaining upper
+atmosphere, whose relative humidity is constant at 50\%. The temperature
+and dew point profiles in the sounding are depicted in Figure
+\ref{fig:initial_conditions_skewt}. The initial
+height is set to $\SI{5}{\kilo\meter}$, the entrainment rate to
+$\SI{1}{\per\kilo\meter}$ and we test both the case
+where the initial precipitation does not saturate the parel, and the
+case where it does, depositing a variable amount of liquid water
+in addition.
 
 \begin{figure}[ht]
 	\centering
@@ -456,6 +551,22 @@ the following subsections.
 		Section \ref{section:results_initial_conditions}.}
 	\label{fig:initial_conditions_skewt}
 \end{figure}
+
+Figure \ref{fig:initial_conditions_motion} shows the height and
+velocity of the parcels with different sets of initial conditions,
+and the minimum height and maximum velocity reached as a function of
+the cumulative amount of water initially added by precipitation.
+It is clear that both downdraft strength (maximum velocity) and
+penetration (initial minus final height) are enhanced by precipitation.
+This is expected; greater initial evaporation of precipitation reduces
+the parcel's temperature further, causing it to be more negatively
+buoyant and to descend further before coming into equilibrium with the
+environment. The addition of liquid water by precipitation also
+stregthens these effects, since it contributes to the parcel's weight
+and allows it to descend moist adiabatically; under this regime, the
+increase in temperature per unit distance descended is smaller and
+the parcel again must descend further, and has more time to gain
+velocity, before coming into equilibrium with the environment.
 
 \begin{figure}[ht]
 	\centering
@@ -479,7 +590,25 @@ the following subsections.
 
 
 \clearpage
-\subsection{The impact of entrainment}
+\subsection{The impact of entrainment} \label{section:results_entrainment}
+We now investigate the effect of
+entrainment rate on downdraft strength and penetration. The scenario
+is similar to the one described in Section
+\ref{section:results_initial_conditions}. The initial conditions are
+fixed: the parcel is initially saturated by precipitation, which
+deposits $\SI{2}{\gram \per\kilo\gram}$ liquid water in it. The
+atmospheric sounding used is the same. The entrainment rate is varied
+between $\SI{0}{\per\kilo\meter}$ and $\SI{2}{\per\kilo\meter}$, which
+covers typical measured values \parencite{lu_2016}.
+
+Figure \ref{fig:entrainment_motion} depicts the same dependent variables
+as Figure \ref{fig:initial_conditions_motion}, with the key independent
+variable now being entrainment rate. We observe that entrainment
+clearly reduces the strength and penetration of the downdraft; this
+is attributed to the fact that more vigorous mixing causes the parcel
+to come into equilibrium with its environment sooner, before it is
+able to descend as far or gain as much velocity as a parcel experiencing
+less mixing.{}
 
 \begin{figure}[ht]
 	\centering
@@ -506,6 +635,19 @@ the following subsections.
 \clearpage
 \subsection{The impact of environmental humidity}%
 \label{section:results_humidity}
+In the third set of calculations, the environment in which
+the parcel's motion takes place is varied by changing the relative
+humidity in the upper part of the idealised sounding described in
+Section \ref{section:results_initial_conditions}. The resulting
+temperature and dew point profiles are shown in Figure
+\ref{fig:env_humidity_skewt}. The initial conditions are similar
+to those of Section \ref{section:results_entrainment}: the parcel is
+initially saturated by precipitation, which
+deposits $\SI{2}{\gram \per\kilo\gram}$ liquid water in it. However,
+the varying environmental relative humidity causes the amount of
+precipitation that may evaporate, and the resulting initial temperature,
+to vary; in a sounding with lower relative humidity, the parcel
+experiences more initial evaporation and cooling.
 
 \begin{figure}[ht]
 	\centering
@@ -518,8 +660,16 @@ the following subsections.
 		the different soundings, and the solid blue line on the right
 		is the common temperature profile.
 	}
-	\label{fig:env_humidity_skew1}
+	\label{fig:env_humidity_skewt}
 \end{figure}
+
+Figure \ref{fig:env_humidity_motion} now depicts the same dependent variables
+as Figures \ref{fig:initial_conditions_motion} and
+\ref{fig:entrainment_motion}, with the key independent
+variable being environmental relative humidity. We observe that
+the downdraft is stronger and penetrates further in the drier
+environments due to the greater degree of initial precipitation-induced
+cooling that is possible, as previously described.
 
 \begin{figure}[ht]
 	\centering
@@ -545,6 +695,17 @@ the following subsections.
 	\label{fig:env_humidity_motion}
 \end{figure}
 
+Furthermore, the DCAPE and DCIN were computed for each sounding,
+allowing the plot of downdraft strength and penetration as functions
+of these variables shown in Figure \ref{fig:env_humidity_dcape_dcin}.
+The results are in strong agreement with the findings of
+\textcite{market_2017} and \textcite{sumrall_2020}: the greater the
+potential energy available and the smaller the inhibition in its way,
+the further and faster the parcel descends. We also note that,
+as postulated by \textcite{sumrall_2020}, smaller ratios of
+$|\dcape/\dcin|$ are strongly correlated with increased downdraft
+strength and penetration.
+
 \begin{figure}[ht]
 	\centering
 	\includegraphics[width=0.95\linewidth]%
@@ -564,6 +725,52 @@ the following subsections.
 
 \clearpage
 \section{Conclusions}
+The construction and testing of a simplified downdraft model, using
+parcel theory with modifications for entrainment, was highly successful
+in reproducing the behaviour documented in literature.
+
+There is strong
+evidence that evaporation of precipitation initiates downdrafts,
+consistent with the precipitation-associated downdraft type
+identified by \textcite{knupp_cotton_1985}, with the amount of
+evaporation and liquid water deposited correlating positively with
+downdraft strength (measured by maximum downward velocity) and
+penetration (measured by the minimum height reached). We may draw
+the logical conclusion that downdrafts are stronger, more prevalent
+and potentially more damaging during storms with heavy precipitation.
+
+It is also observed that the entrainment of environmental air into
+a downdraft impedes its motion. If it is true that the entrainment
+rate is inversely proportional to cloud radius
+\parencite{knupp_cotton_1985}, we may conclude that larger clouds,
+with smaller entrainment rates, should typically produce stronger,
+potentially more damaging downdrafts.
+
+It is finally seen that dryness in the atmosphere above the boundary
+layer allows and maintains stronger downdrafts. Larger values of
+DCAPE, and smaller values of DCIN and $|\dcin/\dcape|$, are associated
+with stronger and deeper penetrating downdrafts, in excellent agreement
+with the findings of \textcite{market_2017} and \textcite{sumrall_2020}.
+
+While the simplicity of the model, especially the assumption that
+no forces other than buoyancy act on parcels, limit the validity of
+the numerical values generated, it is nevertheless able to
+unambiguously show the important features of downdraft dynamics in
+relative terms. Given its simplicity and ease of use, one proposed use
+for the model is as a supplement to the basic techniques of sounding
+analysis (such as DCAPE and DCIN calculations) commonly used in
+weather forecasting. It could be used to estimate the potential for
+damaging downdrafts based on real atmospheric sounding data within minutes
+of the data being collected.
+
+Further work may seek to determine which forces other than buoyancy,
+such as drag, can be incorporated into the model to improve the
+accuracy and validity of its numerical results without excessive
+complication and redesigning of the underlying code. A more advanced
+model might also seek to account for more advanced downdraft dynamics,
+such as entrainment from an adjacent updraft with momentum transfer
+in addition to heat and water.
+
 
 \clearpage
 \printbibliography
