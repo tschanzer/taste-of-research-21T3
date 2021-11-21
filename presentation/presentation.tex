@@ -1,12 +1,19 @@
-\documentclass[handout]{beamer}
+\documentclass{beamer}
 
-\usepackage{hyperref}
-\usepackage{soul}
-\usepackage{minted}
-\usepackage{xcolor}
+\usepackage{
+    hyperref,
+    multicol,
+    soul,
+    minted,
+    xcolor,
+    subfig,
+    wrapfig,
+}
 \definecolor{LightGray}{gray}{0.9}
 \setbeamercovered{transparent}
 \graphicspath{{figures}}
+
+\setlength{\columnsep}{0mm}
 
 \title{A Simple Parcel Theory Model of Downdrafts in Atmospheric Convection}
 \author{
@@ -34,10 +41,21 @@
         maintain or inhibit, downdrafts?
     \end{block}
     \begin{block}{Motivation}
-        \begin{itemize}
-            \item Convection parametrisation in global climate models
-            \item Forcasting dangerous downbursts
-        \end{itemize}
+        \vspace{-8mm}
+        \begin{figure}[ht]
+            \centering
+            \subfloat[\centering
+                Convection parametrisation in global climate models]{
+                \includegraphics[height=2.5cm]{%
+                    figures/ipcc_model_temp_cropped.png}
+            }
+            \subfloat[\centering
+                Forcasting dangerous microbursts]{
+                \includegraphics[height=2.5cm]{figures/delta191_side.png}
+            }
+        \end{figure}
+        \tiny \color{gray} (a): IPCC AR6 interactive atlas.
+        (b): US National Weather Service.
     \end{block}
 \end{frame}
 
@@ -48,58 +66,79 @@
         Knupp, KR \& Cotton, WR 1985, ‘Convective cloud downdraft
         structure: An interpretive survey’, Reviews of geophysics (1985),
         vol. 23, no. 2, pp. 183–215.}
-    identify four downdraft types from a review of observational and
-    modelling research:
-    \begin{itemize}
-        \item<1,5> Precipitation-associated, \pause
-        \item<2,6> Penetrative, \pause
-        \item<3> Cloud-edge, \pause
-        \item<4> Overshooting. \pause
-    \end{itemize}
-    \emph{In this work:} precipitation-associated and penetrative
-    downdrafts.
+    identify four downdraft types:
+    \vspace{-2mm}
+    \begin{multicols}{2}
+        \small
+        \begin{itemize}
+            \item Precipitation-associated (PR)
+            \item Penetrative (P)
+            \item Cloud-edge (E)
+            \item Overshooting (O)
+        \end{itemize}
+    \end{multicols}
+    \vspace{-3mm}
+    \begin{figure}[ht]
+        \centering
+        \includegraphics[width=0.6\linewidth]{figures/knupp_cotton_types.pdf}
+    \end{figure}
+    \vspace{-3mm}
+    \centering \tiny Adapted from \emph{Knupp and Cotton (1985)}.
 \end{frame}
 
 \begin{frame}
     \frametitle{Background: Parcel Theory}
-    \textbf{Parcel:} small air mass with an imaginary, flexible but closed
+    \uncover<1>{
+    \textbf{Parcel:} small air mass with an imaginary, flexible
     boundary.
-
-    \textbf{Key assumptions:}
     \begin{itemize}
         \item Motion is purely vertical and buoyancy is the only force
-            involved: \[b = \frac{\rho_E - \rho_P}{\rho_P} g.\]
-        \item Raising and lowering the parcel is a reversible adiabatic
+            involved:
+            \[b = (\text{force/mass})
+            = \frac{
+                (\text{environment density})
+                - (\text{parcel density})
+            }{
+                (\text{parcel density})
+            }g.\]
+        \item Raising and lowering the parcel is an adiabatic
             process
     \end{itemize}
+    }
 
-    \textbf{Major complication:} the atmosphere contains water!
+    \uncover<2>{
+    \textbf{Complication 1:} the atmosphere contains water!
     \begin{itemize}
-        \item Descent is either \emph{dry} adiabatic (no phase changes) or
-            \emph{moist} adiabatic (with phase changes)
-        \item Phase equilibrium is maintained
-        \item Air/vapour mixture is an ideal gas
+        \item Descent is either \emph{dry adiabatic} (no phase changes) or
+            \emph{moist adiabatic} (with phase changes)
     \end{itemize}
+    }
 \end{frame}
 
 \begin{frame}[fragile]
     \frametitle{Methods}
-    Original model developed from first principles in Python.
+
+    \uncover<1>{
+    Original model developed in Python.
+
+    \textbf{Complication 2:} finding the temperature of an
+    \emph{entraining} parcel
     \begin{itemize}
-        \item The \verb|Environment| class interpolates real atmospheric
-            temperature and moisture profiles to calculate derived quantities:
-\vspace{-3mm}
-\begin{minted}[bgcolor=LightGray, fontsize=\footnotesize]{python}
->>> sydney.density(5*units.km)
-0.7206758681891053 kilogram/meter^3
-\end{minted}
-\vspace{-7mm}
-        \item Various thermodynamic calculations (approximate and
-            exact) are implemented from literature
-        \item End goal: calculate parcel temperature $\to$ density $\to$
-            buoyancy as functions of height and numerically solve
-            \[\frac{d^2 z}{dt^2} = b(z).\]
+        \item Small steps: (non-adiabatic) mixing $\to$
+            adiabatic descent $\to$ mixing $\to$ ...
     \end{itemize}
+    }
+
+    \uncover<2>{
+    End goal: calculate parcel temperature $\to$ density $\to$
+    buoyancy as functions of height and numerically solve
+    \[\frac{d^2 z}{dt^2} = b(z).\]
+    }
+
+    \uncover<3>{
+    We can use \emph{any} real or idealised profiles of environmental
+    temperature and moisture.
+    }
 \end{frame}
 
 \begin{frame}
@@ -125,28 +164,36 @@
     \begin{figure}[ht]
         \centering
         \includegraphics[width=0.9\linewidth]%
-            {figures/motion_vs_RH_2gram_1perkm-eps-converted-to.pdf}
+            {figures/motion_vs_RH_2gram_1perkm.eps}
     \end{figure}
 \end{frame}
 
 \begin{frame}
     \frametitle{Conclusions and Future Work}
-    \textbf{Conclusions:}
-    \begin{itemize}
-        \item Precipitation evaporation increases strength and penetration
-        \item Entrainment reduces them
-        \item Atmospheric dryness increases them
-    \end{itemize}
 
+    \uncover<1>{
+    \textbf{Conclusions:} downdraft strength and penetration are
+    \begin{itemize}
+        \item Increased by precipitation evaporation and condensate loading,
+        \item Reduced by entrainment of environmental air,
+        \item Increased by atmospheric dryness.
+    \end{itemize}
+    }
+
+    \uncover<2>{
     \textbf{Application:} supplement basic sounding analysis methods used
     in weather forecasting
+    }
 
+    \uncover<3>{
     \textbf{Future Work:}
     \begin{itemize}
-        \item Consider other forces at play, e.g. drag
+        \item Consider other forces, e.g. drag
         \item Model more advanced dynamics, e.g. entrainment from
             updrafts
+        \item Support the findings of more advanced models
     \end{itemize}
+    }
 \end{frame}
 
 \end{document}
