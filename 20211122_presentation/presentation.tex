@@ -11,6 +11,8 @@
 }
 \definecolor{LightGray}{gray}{0.9}
 \setbeamercovered{transparent}
+\setbeameroption{show notes on second screen=right}
+% \setbeameroption{hide notes}
 \graphicspath{{figures}}
 
 \setlength{\columnsep}{0mm}
@@ -31,15 +33,18 @@
 \begin{document}
 
 \frame{\titlepage}
+\note[itemize]{
+    \item Present a simple model...
+    \item Downdraft: descending stream of air
+    \item Firstly: thank Prof. Sherwood for his patient guidance
+}
 
 \begin{frame}
     \frametitle{Aim and Motivation}
     Downdrafts play an important role in the dynamics of the Earth's
     atmosphere and climate.
-    \begin{block}{Question}
-        Which processes and conditions initiate, and which
-        maintain or inhibit, downdrafts?
-    \end{block}
+    \note[item]{Mass, momentum, heat and moisture}
+
     \begin{block}{Motivation}
         \vspace{-8mm}
         \begin{figure}[ht]
@@ -57,6 +62,22 @@
         \tiny \color{gray} (a): IPCC AR6 interactive atlas.
         (b): US National Weather Service.
     \end{block}
+    \note[item]{
+        Intergovernmental Panel on Climate Change \#6, average temperature
+        increase across 34 global climate models
+        \begin{itemize}
+            \item Large spatial domain, long time scales (decades)
+        \end{itemize}
+    }
+    \note[item]{
+        Delta Flight 191, Dallas/Fort Worth 1985 (one of several)
+    }
+
+    \begin{block}{Question}
+        Which processes and conditions initiate, and which
+        maintain or inhibit, downdrafts?
+    \end{block}
+    \note[item]{Both prompt us to ask...}
 \end{frame}
 
 \begin{frame}
@@ -84,6 +105,15 @@
     \end{figure}
     \vspace{-3mm}
     \centering \tiny Adapted from \emph{Knupp and Cotton (1985)}.
+
+    \note[item]{
+        Four qualitative answers identified in literature...
+        (only PR, time constraints)
+    }
+    \note[item]{
+        This work: primarily PR, but model is general -- applicable to
+        provided appropriate initial conditions
+    }
 \end{frame}
 
 \begin{frame}
@@ -91,6 +121,8 @@
     \uncover<1>{
     \textbf{Parcel:} small air mass with an imaginary, flexible
     boundary.
+    \note<1>[item]{The basis of the model is...}
+
     \begin{itemize}
         \item Motion is purely vertical and buoyancy is the only force
             involved:
@@ -105,6 +137,13 @@
             process
     \end{itemize}
     }
+    \note<1>[item]{
+        Key assumptions...
+        \begin{itemize}
+            \item
+            \item Pressure, work, internal energy/temperature
+        \end{itemize}
+    }
 
     \uncover<2>{
     \textbf{Complication 1:} the atmosphere contains water!
@@ -113,6 +152,14 @@
             \emph{moist adiabatic} (with phase changes)
     \end{itemize}
     }
+    \note<2>{
+        Major driving force
+        \begin{itemize}
+            \item No liquid:... very similar to no water
+            \item With liquid: saturation vapour pressure, evaporation,
+                latent heat, cooling (considerably slower warming)
+        \end{itemize}
+    }
 \end{frame}
 
 \begin{frame}[fragile]
@@ -120,6 +167,9 @@
 
     \uncover<1>{
     Original model developed in Python.
+    \note<1>[item]{
+        From scratch, using parcel theory as basis, theoretical foundation
+    }
 
     \textbf{Complication 2:} finding the temperature of an
     \emph{entraining} parcel
@@ -128,17 +178,33 @@
             adiabatic descent $\to$ mixing $\to$ ...
     \end{itemize}
     }
+    \note<1>[item]{
+        But... (explain entrainment), not covered by traditional parcel
+        theory
+    }
+    \note<1>[item]{
+        Buoyancy: need to know temperature vs. height (explain method)
+    }
 
     \uncover<2>{
     End goal: calculate parcel temperature $\to$ density $\to$
     buoyancy as functions of height and numerically solve
     \[\frac{d^2 z}{dt^2} = b(z).\]
     }
-
-    \uncover<3>{
-    We can use \emph{any} real or idealised profiles of environmental
-    temperature and moisture.
+    \note<2>{
+        Now relatively simple (most work: finding $b(z)$)
     }
+
+    % \uncover<3>{
+    % We can use \emph{any} real or idealised profiles of environmental
+    % temperature and moisture.
+    % }
+    % \note<3>[item]{
+    %     Need to know...,
+    %     Important capability: ..., leads to one application: ... (more
+    %     later)
+    % }
+    % \note<3>[item]{Here: idealised}
 \end{frame}
 
 \begin{frame}
@@ -148,25 +214,51 @@
         \includegraphics[width=0.9\linewidth]%
             {figures/motion_vs_initial_conditions_50RH_1perkm.eps}
     \end{figure}
+    \note{SLOW DOWN!}
+    \note{Several results (time constraints)}
+    \note[item]{Imagine...}
+    \note[item]{
+        Top left height vs. time: ..., relate to top right
+    }
+    \note[item]{
+        Bottom row: explain horizontal axis
+    }
+    \note[item]{Why?}
 \end{frame}
 
-\begin{frame}
-    \frametitle{Results: Entrainment Inhibits Downdrafts}
-    \begin{figure}[ht]
-        \centering
-        \includegraphics[width=0.9\linewidth]%
-            {figures/motion_vs_entr_rate_2gram_50RH.eps}
-    \end{figure}
-\end{frame}
+% \begin{frame}
+%     \frametitle{Results: Entrainment Inhibits Downdrafts}
+%     \begin{figure}[ht]
+%         \centering
+%         \includegraphics[width=0.9\linewidth]%
+%             {figures/motion_vs_entr_rate_2gram_50RH.eps}
+%     \end{figure}
+%     \note{SLOW DOWN!}
+%     \note[item]{
+%         Similar to before, fix initial conditions: saturation, 2 g/kg
+%         liquid
+%     }
+%     \note[item]{Explain entrainment rate}
+%     \note[item]{Top left, right}
+%     \note[item]{Bottom left, right (explain axis)}
+%     \note[item]{Why?}
+% \end{frame}
 
-\begin{frame}
-    \frametitle{Results: Atmospheric Dryness Enhances Downdrafts}
-    \begin{figure}[ht]
-        \centering
-        \includegraphics[width=0.9\linewidth]%
-            {figures/motion_vs_RH_2gram_1perkm.eps}
-    \end{figure}
-\end{frame}
+% \begin{frame}
+%     \frametitle{Results: Atmospheric Dryness Enhances Downdrafts}
+%     \begin{figure}[ht]
+%         \centering
+%         \includegraphics[width=0.9\linewidth]%
+%             {figures/motion_vs_RH_2gram_1perkm.eps}
+%     \end{figure}
+%     \note[item]{
+%         Idealised temperature and moisture profiles...
+%         (initial conditions, entrainment rate constant)
+%     }
+%     \note[item]{Top left, right}
+%     \note[item]{Bottom left, right (explain axis)}
+%     \note[item]{Why?}
+% \end{frame}
 
 \begin{frame}
     \frametitle{Conclusions and Future Work}
@@ -179,10 +271,21 @@
         \item Increased by atmospheric dryness.
     \end{itemize}
     }
+    \note<1>{To summarise...}
 
     \uncover<2>{
     \textbf{Application:} supplement basic sounding analysis methods used
     in weather forecasting
+    }
+    \note<2>[item]{
+        Mentioned earlier: any profile of environmental temperature, moisture
+        (needed for...)
+    }
+    \note<2>[item]{
+        Measured 2x/day all over the world, forecasters calculate indices...
+    }
+    \note<2>[item]{
+        Sydney: assess downdraft potential without time, effort, expense...
     }
 
     \uncover<3>{
@@ -191,9 +294,16 @@
         \item Consider other forces, e.g. drag
         \item Model more advanced dynamics, e.g. entrainment from
             updrafts
-        \item Support the findings of more advanced models
+        % \item Support the findings of more advanced models
     \end{itemize}
     }
+    \note<3>[item]{
+        Model is simple, with a few improvements: accurate numerical
+        predictions... (mention momentum)
+    }
+    % \note<3>[item]{
+    %     Prof. Sherwood + colleagues, machine learning
+    % }
+    \note<3>[item]{Thank School of Physics}
 \end{frame}
-
 \end{document}
