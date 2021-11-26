@@ -74,6 +74,7 @@ def moist_lapse(
     else:
         raise ValueError("method must be 'fast' or 'integration'.")
 
+
 def temperature_change(dq):
     """
     Calculates the temperature change due to evaporation of water.
@@ -334,8 +335,11 @@ def _daviesjones_f(Tw, pi, Q=None, kind='pseudo'):
     Returns:
         The value of f(Tw, pi).
     """
-
-    pressure = 1000.0 * pi**3.504  # in mbar
+    
+    cp = const.dry_air_spec_heat_press.m
+    R = const.dry_air_gas_constant.m
+    lambda_ = cp/R
+    pressure = 1000.0 * pi**lambda_  # in mbar
 
     # coefficients
     C = 273.15
@@ -352,7 +356,8 @@ def _daviesjones_f(Tw, pi, Q=None, kind='pseudo'):
         L0 = 2.501e6
         L1 = 2.37e3
         cpd = const.dry_air_spec_heat_press.m
-        cw = 4190.  # specific heat of liquid water
+        # cw = 4190.  # specific heat of liquid water
+        cw = const.water_specific_heat.m*1e3
         k0 = (L0 + L1*C)/(cpd + cw*Q)
         k1 = L1/(cpd + cw*Q)
         k2 = 0
@@ -367,7 +372,7 @@ def _daviesjones_f(Tw, pi, Q=None, kind='pseudo'):
     es = mpcalc.saturation_vapor_pressure(Tw*units.kelvin).m_as(units.mbar)
 
     G = (k0/Tw - k1)*(rs + k2*rs**2)
-    f = (C/Tw)**3.504 * (1 - es/pressure)**(3.504*nu) * np.exp(-3.504*G)
+    f = (C/Tw)**lambda_ * (1 - es/pressure)**(lambda_*nu) * np.exp(-lambda_*G)
 
     return f
 
@@ -387,8 +392,11 @@ def _daviesjones_fprime(tau, pi, Q=None, kind='pseudo'):
     Returns:
         The value of f'(Tau, pi) for fixed pi.
     """
-
-    pressure = 1000.0 * pi**3.504  # in mbar
+    
+    cp = const.dry_air_spec_heat_press.m
+    R = const.dry_air_gas_constant.m
+    lambda_ = cp/R
+    pressure = 1000.0 * pi**lambda_  # in mbar
 
     # coefficients
     C = 273.15
@@ -406,7 +414,8 @@ def _daviesjones_fprime(tau, pi, Q=None, kind='pseudo'):
         L0 = 2.501e6
         L1 = 2.37e3
         cpd = const.dry_air_spec_heat_press.m
-        cw = 4190.  # specific heat of liquid water
+        # cw = 4190.  # specific heat of liquid water
+        cw = const.water_specific_heat.m*1e3
         k0 = (L0 + L1*C)/(cpd + cw*Q)
         k1 = L1/(cpd + cw*Q)
         k2 = 0
@@ -424,7 +433,7 @@ def _daviesjones_fprime(tau, pi, Q=None, kind='pseudo'):
     drs_dtau = epsilon*pressure/(pressure - es)**2 * des_dtau  # eq. A.4
     dG_dtau = (-k0/tau**2 * (rs + k2*rs**2)
                + (k0/tau - k1)*(1 + 2*k2*rs)*drs_dtau)  # eq. A.3
-    dlogf_dtau = -3.504*(1/tau + nu/(pressure - es)*des_dtau
+    dlogf_dtau = -lambda_*(1/tau + nu/(pressure - es)*des_dtau
                          + dG_dtau)  # eq. A.2
     df_dtau = _daviesjones_f(tau, pi) * dlogf_dtau  # eq. A.1
 
@@ -448,11 +457,14 @@ def wetbulb(pressure, theta_e, improve=True):
     # changing to correct units
     pressure = pressure.m_as(units.mbar)
     theta_e = theta_e.m_as(units.kelvin)
-
-    pi = (pressure/1000.0)**(1./3.504)
+    
+    cp = const.dry_air_spec_heat_press.m
+    R = const.dry_air_gas_constant.m
+    lambda_ = cp/R
+    pi = (pressure/1000.0)**(1./lambda_)
     Teq = theta_e*pi
     C = 273.15
-    X = (C/Teq)**3.504
+    X = (C/Teq)**lambda_
 
     # slope and intercept for guesses - eq. 4.3, 4.4
     k1 = -38.5*pi**2 + 137.81*pi - 53.737
@@ -517,8 +529,11 @@ def reversible_lapse_daviesjones(
     else:
         reference_pressure = reference_pressure.m_as(units.mbar)
     
+    cp = const.dry_air_spec_heat_press.m
+    R = const.dry_air_gas_constant.m
+    lambda_ = cp/R
     # nondimensional pressure
-    reference_pi = (reference_pressure/1000.0)**(1./3.504)
+    reference_pi = (reference_pressure/1000.0)**(1./lambda_)
     C = 273.15
     # initial specific humidity is saturated specific humidity
     q_initial = saturation_specific_humidity(
@@ -528,12 +543,16 @@ def reversible_lapse_daviesjones(
          /(1 - q_initial - initial_liquid_ratio))
     if hasattr(Q, 'units'):
         Q = Q.m_as(units.dimensionless)  # make sure Q is a number
+    cpd = const.dry_air_spec_heat_press.m
+    # cw = 4190.  # specific heat of liquid water
+    cw = const.water_specific_heat.m*1e3
+    nu = const.dry_air_gas_constant.m/(cpd + cw*Q)
         
     # see eq. 5.3 of Davies-Jones 2008
     f_initial = _daviesjones_f(
         initial_temperature.m_as(units.kelvin), reference_pi, Q=Q,
         kind='reversible')
-    A1 = f_initial**(-1/3.504)*C/reference_pi
+    A1 = f_initial**(-1/lambda_)*C/reference_pi**(lambda_*nu)  # correction
     
     def single(p):
         """Finds the final temperature for a single pressure value."""
@@ -544,8 +563,8 @@ def reversible_lapse_daviesjones(
             reference_pressure*units.mbar, method='fast',
             improve=False).m_as(units.celsius)
 
-        pi = (p/1000.0)**(1./3.504)
-        X = (C/(A1*pi))**3.504
+        pi = (p/1000.0)**(1./lambda_)
+        X = (C/(A1*pi**(lambda_*nu)))**lambda_  # correction
         for i in range(improve):
             # apply iterations of Newton's method (eq. 2.6)
             slope = _daviesjones_fprime(
